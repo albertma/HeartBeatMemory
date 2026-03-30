@@ -1,0 +1,66 @@
+/* Timeline */
+"timeline" = "Timeline";
+
+/* Search */
+"search" = "Search";
+
+/* Settings */
+"settings" = "Settings";
+
+/* App Name */
+"heart_beat_memory" = "HeartBeat Memory";
+
+/* Tagline */
+"record_life_moments" = "Record life's beautiful moments";
+
+/* Features */
+"feature_calendar" = "Calendar";
+"feature_calendar_desc" = "Read calendar events";
+"feature_photo" = "Photos";
+"feature_photo_desc" = "AI understands your photos";
+"feature_location" = "Location";
+"feature_location_desc" = "Mark special places";
+"feature_ai" = "AI Smart";
+"feature_ai_desc" = "Generate warm memories";
+
+/* Buttons */
+"next" = "Next";
+"skip" = "Skip";
+"request_permission" = "Authorize Data Access";
+"requesting" = "Requesting...";
+"save" = "Save";
+"cancel" = "Cancel";
+
+/* Search */
+"no_memory" = "No memories found";
+"try_adjust_search" = "Try adjusting search criteria";
+
+/* Settings */
+"ai_settings" = "AI Settings";
+"api_key" = "API Key";
+"set" = "Set";
+"auto_generate" = "Auto-generate daily memory";
+"generate_time" = "Generate Time";
+"data_permissions" = "Data Permissions";
+"manage_permissions" = "Manage Permissions";
+"about" = "About";
+"version" = "Version";
+"privacy_policy" = "Privacy Policy";
+"terms_of_use" = "Terms of Use";
+"clear_data" = "Clear All Data";
+
+/* Permissions */
+"calendar" = "Calendar";
+"calendar_desc" = "Read calendar events";
+"reminders" = "Reminders";
+"reminders_desc" = "Read reminders";
+"photos" = "Photos";
+"photos_desc" = "Read photos";
+"location" = "Location";
+"location_desc" = "Access location history";
+"notes" = "Notes";
+"notes_desc" = "Read notes";
+
+/* API Key Input */
+"input_api_key" = "Input API Key";
+"get_from_openai" = "Get from OpenAI website";

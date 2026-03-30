@@ -1,61 +1,42 @@
-//
-//  ContentView.swift
-//  HeartBeatMemory
-//
-//  Created by albertma on 2026/3/9.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @EnvironmentObject var appState: AppState
+    @State private var selectedTab: Tab = .timeline
+    
+    enum Tab {
+        case timeline
+        case search
+        case settings
+    }
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        TabView(selection: $selectedTab) {
+            TimelineView()
+                .tabItem {
+                    Label(LocalizedStringKey("timeline"), systemImage: "clock")
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+                .tag(Tab.timeline)
+            
+            SearchView()
+                .tabItem {
+                    Label(LocalizedStringKey("search"), systemImage: "magnifyingglass")
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                .tag(Tab.search)
+            
+            SettingsView()
+                .tabItem {
+                    Label(LocalizedStringKey("settings"), systemImage: "gear")
                 }
-            }
-        } detail: {
-            Text("Select an item")
+                .tag(Tab.settings)
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+        .sheet(isPresented: $appState.isFirstLaunch) {
+            OnboardingView()
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .environmentObject(AppState())
 }

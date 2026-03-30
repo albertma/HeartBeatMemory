@@ -3,8 +3,10 @@
 <plist version="1.0">
 <dict>
 	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
+	<array/>
+	<key>NSLocationUsageDescription</key>
+	<string>需要使用定位服务来生成地点信息</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要访问相册来生成回忆信息</string>
 </dict>
 </plist>

@@ -1,0 +1,66 @@
+/* Timeline */
+"timeline " = "时间线";
+
+/* Search */
+"search " = "搜索";
+
+/* Settings */
+"settings " = "设置";
+
+/* App Name */
+"heart_beat_memory" = "心跳回忆";
+
+/* Tagline */
+"record_life_moments" = "用AI记录生活中的美好瞬间";
+
+/* Features */
+"feature_calendar" = "整合日历";
+"feature_calendar_desc" = "自动读取日历中的重要事件";
+"feature_photo" = "分析照片";
+"feature_photo_desc" = "AI理解照片中的美好时刻";
+"feature_location" = "记录位置";
+"feature_location_desc" = "标记那些特别的地方";
+"feature_ai" = "AI智能";
+"feature_ai_desc" = "用LLM生成温暖的回忆";
+
+/* Buttons */
+"next " = "下一步";
+"skip" = "跳过";
+"request_permission" = "授权数据访问";
+"requesting" = "请求权限中...";
+"save" = "保存";
+"cancel" = "取消";
+
+/* Search */
+"no_memory" = "没有找到回忆";
+"try_adjust_search" = "试试调整搜索条件";
+
+/* Settings */
+"ai_settings" = "AI设置";
+"api_key" = "API Key";
+"set" = "设置";
+"auto_generate" = "自动生成每日回忆";
+"generate_time" = "生成时间";
+"data_permissions" = "数据权限";
+"manage_permissions" = "管理访问权限";
+"about" = "关于";
+"version" = "版本";
+"privacy_policy" = "隐私政策";
+"terms_of_use" = "使用条款";
+"clear_data" = "清除所有数据";
+
+/* Permissions */
+"calendar" = "日历";
+"calendar_desc" = "读取日历事件";
+"reminders" = "提醒";
+"reminders_desc" = "读取提醒事项";
+"photos" = "照片";
+"photos_desc" = "读取照片";
+"location" = "位置";
+"location_desc" = "访问位置历史";
+"notes" = "备忘录";
+"notes_desc" = "读取备忘录";
+
+/* API Key Input */
+"input_api_key" = "输入API Key";
+"get_from_openai" = "请从OpenAI官网获取API Key";
