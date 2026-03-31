@@ -33,10 +33,6 @@ class AppState: ObservableObject {
         // Load saved memories
         loadMemories()
         
-        // Add sample data if empty (for demo)
-        if memories.isEmpty {
-            addSampleMemories()
-        }
     }
     
     // MARK: - Memory Persistence

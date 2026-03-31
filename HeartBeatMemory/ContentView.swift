@@ -6,6 +6,7 @@ struct ContentView: View {
     
     enum Tab {
         case timeline
+        case chat
         case search
         case settings
     }
@@ -18,11 +19,18 @@ struct ContentView: View {
                 }
                 .tag(Tab.timeline)
             
+            ChatView()
+                .tabItem {
+                    Label(LocalizedStringKey("chat"), systemImage: "message")
+                }
+                .tag(Tab.chat)
+            
             SearchView()
                 .tabItem {
                     Label(LocalizedStringKey("search"), systemImage: "magnifyingglass")
                 }
                 .tag(Tab.search)
+            
             
             SettingsView()
                 .tabItem {

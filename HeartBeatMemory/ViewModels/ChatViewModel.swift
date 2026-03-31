@@ -39,7 +39,7 @@ class ChatViewModel {
     var isGenerating = false
 
     /// Current generation task, used for cancellation
-    private var generateTask: Task<Void, any Error>?
+    public var generateTask: Task<Void, any Error>?
 
     /// Stores performance metrics from the current generation
     private var generateCompletionInfo: GenerateCompletionInfo?
@@ -118,16 +118,18 @@ class ChatViewModel {
     }
 
     /// Processes and adds media attachments to the current message
-    func addMedia(_ result: Result<URL, any Error>) {
+    func addMedia(_ result: Result<[URL], any Error>) {
         do {
-            let url = try result.get()
-
-            // Determine media type and add to appropriate collection
-            if let mediaType = UTType(filenameExtension: url.pathExtension) {
-                if mediaType.conforms(to: .image) {
-                    mediaSelection.images = [url]
-                } else if mediaType.conforms(to: .movie) {
-                    mediaSelection.videos = [url]
+            let urls = try result.get()
+            
+            for url in urls {
+                // Determine media type and add to appropriate collection
+                if let mediaType = UTType(filenameExtension: url.pathExtension) {
+                    if mediaType.conforms(to: .image) {
+                        mediaSelection.images.append(url)
+                    } else if mediaType.conforms(to: .movie) {
+                        mediaSelection.videos.append(url)
+                    }
                 }
             }
         } catch {
