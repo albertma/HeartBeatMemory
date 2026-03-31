@@ -19,6 +19,13 @@ struct TimelineView: View {
                                 .onTapGesture {
                                     selectedMemory = memory
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        appState.deleteMemory(memory)
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         appState.deleteMemory(memory)

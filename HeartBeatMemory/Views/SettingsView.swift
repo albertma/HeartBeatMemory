@@ -238,9 +238,14 @@ struct ModelInfoView: View {
                 }
                 
                 Section("存储位置") {
-                    Text("~/Library/Caches/com.apple.developer.MLX/")
+                    Text("App Documents/MLXModels/")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(.secondary)
+                    
+                    // Show model size if downloaded
+                    if isDownloaded, let size = mlxService.getModelSize(modelName) {
+                        InfoRow(label: "大小", value: formatBytes(size))
+                    }
                 }
                 
                 // Download Button Section
@@ -371,6 +376,14 @@ struct InfoRow: View {
             Text(value)
         }
     }
+}
+
+// MARK: - Helper Functions
+
+private func formatBytes(_ bytes: Int64) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: bytes)
 }
 
 // MARK: - API Key Input View
