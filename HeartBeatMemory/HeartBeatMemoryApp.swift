@@ -90,44 +90,7 @@ class AppState: ObservableObject {
         }
     }
     
-    // MARK: - Sample Data (Demo)
     
-    private func addSampleMemories() {
-        let calendar = Calendar.current
-        
-        // Sample memory 1 - 3 days ago
-        let sample1 = HeartBeatMemory(
-            date: calendar.date(byAdding: .day, value: -3, to: Date())!,
-            title: "团队聚餐",
-            summary: "和团队一起去了外滩的意大利餐厅，氛围很好，大家聊得很开心。讨论了下个季度的产品规划。",
-            mood: .happy,
-            category: .work,
-            aiTags: ["团队", "美食", "外滩", "规划"]
-        )
-        
-        // Sample memory 2 - 5 days ago
-        let sample2 = HeartBeatMemory(
-            date: calendar.date(byAdding: .day, value: -5, to: Date())!,
-            title: "周末晨跑",
-            summary: "早上去世纪公园跑步，春天来了，樱花开了。跑了5公里，感觉整个人都轻松了。",
-            mood: .calm,
-            category: .hobby,
-            aiTags: ["运动", "公园", "春天", "跑步"]
-        )
-        
-        // Sample memory 3 - 7 days ago
-        let sample3 = HeartBeatMemory(
-            date: calendar.date(byAdding: .day, value: -7, to: Date())!,
-            title: "朋友生日派对",
-            summary: "老朋友的生日派对，在一家爵士酒吧。大家好久没聚了，聊了很多以前的故事。",
-            mood: .grateful,
-            category: .friends,
-            aiTags: ["派对", "朋友", "爵士", "回忆"]
-        )
-        
-        memories = [sample1, sample2, sample3]
-        saveMemories()
-    }
     
     func deleteMemory(_ memory: HeartBeatMemory) {
         memories.removeAll { $0.id == memory.id }

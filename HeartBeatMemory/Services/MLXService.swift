@@ -19,10 +19,8 @@ class MLXService {
     /// List of available models that can be used for generation.
     /// Includes both language models (LLM) and vision-language models (VLM).
     static let availableModels: [LMModel] = [
-        LMModel(name: "qwen3:1.7b", configuration: LLMRegistry.qwen3_1_7b_4bit, type: .llm),
-        LMModel(name: "qwen2.5VL:3b", configuration: VLMRegistry.qwen2_5VL3BInstruct4Bit, type: .vlm),
+       
         LMModel(name: "qwen2VL:2b", configuration: VLMRegistry.qwen2VL2BInstruct4Bit, type: .vlm),
-        LMModel(name: "smolVLM", configuration: VLMRegistry.smolvlminstruct4bit, type: .vlm),
     ]
 
     /// Cache to store loaded model containers to avoid reloading.
@@ -89,14 +87,9 @@ class MLXService {
     /// Get model identifier from model name
     private func getModelIdentifier(for modelName: String) -> String {
         switch modelName {
-        case "qwen2.5VL:3b":
-            return "Qwen2.5-VL-3B-Instruct-4bit"
+       
         case "qwen2VL:2b":
             return "Qwen2-VL-2B-Instruct-4bit"
-        case "qwen3:1.7b":
-            return "Qwen3-1.7B-4bit"
-        case "smolVLM":
-            return "smolVLM-Instruct"
         default:
             return modelName.replacingOccurrences(of: ":", with: "-")
         }
