@@ -1,6 +1,6 @@
 //
 //  ConversationView.swift
-//  MLXChatExample
+//  
 //
 //  Created by İbrahim Çetin on 20.04.2025.
 //

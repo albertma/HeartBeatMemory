@@ -30,7 +30,7 @@ struct SettingsView: View {
                             ForEach(MLXService.availableModels) { model in
                                 HStack {
                                     Text(model.displayName)
-                                    if mlxService.isModelDownloaded(model.name) {
+                                    if mlxService.isModelDownloaded(model) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(.green)
                                             .font(.caption)

@@ -1,10 +1,3 @@
-//
-//  MLXService.swift
-//  HeartBeatMemory
-//
-//  Created by albertma on 2026/3/29.
-//
-
 import Foundation
 import MLX
 import MLXLLM
@@ -12,297 +5,378 @@ import MLXLMCommon
 import MLXVLM
 import Hub
 
-/// A service class that manages machine learning models for text and vision-language tasks.
-/// This class handles model loading, caching, and text generation using various LLM and VLM models.
+// MARK: - LMModel 扩展：所有模型必须使用 mlx-community 下的公开 repo
+// ⚠️ 不要使用 VLMRegistry/LLMRegistry 内置的 configuration，
+//    它们部分指向原始组织（如 Qwen/、HuggingFaceTB/），在 hf-mirror.com 上需要登录（401）
+//    必须统一使用 mlx-community/ 下的公开镜像版本
+
+extension ModelConfiguration {
+    
+    // VLM
+    static let qwen2VL_2b     = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
+}
+
+// MARK: - MLXService
+
+/// 管理 MLX 模型的加载、缓存与文本生成
 @Observable
 class MLXService {
-    /// List of available models that can be used for generation.
-    /// Includes both language models (LLM) and vision-language models (VLM).
+
+    // MARK: - 可用模型列表
+    // ✅ 全部使用 mlx-community repo，保证 hf-mirror.com 可公开访问（无需登录）
     static let availableModels: [LMModel] = [
-       
-        LMModel(name: "qwen2VL:2b", configuration: VLMRegistry.qwen2VL2BInstruct4Bit, type: .vlm),
+        LMModel(name: "qwen2VL:2b",   configuration: .qwen2VL_2b,   type: .vlm),
     ]
 
-    /// Cache to store loaded model containers to avoid reloading.
-    private let modelCache = NSCache<NSString, ModelContainer>()
-    
-    /// Tracks the current model download progress.
+    // MARK: - 状态属性
+
+    /// 当前模型下载进度，绑定到 UI
     @MainActor
     private(set) var modelDownloadProgress: Progress?
 
-    /// Downloaded model names (tracked locally for persistence check)
+    /// 是否正在加载/下载模型
     @MainActor
-    private(set) var downloadedModels: Set<String> = []
+    private(set) var isLoadingModel: Bool = false
 
-    /// UserDefaults key for persisting downloaded models
-    private let downloadedModelsKey = "MLXDownloadedModels"
-    
-    /// Base directory for model cache (persistent between app runs)
-    private var modelCacheDirectory: URL {
-        // Use app support directory which persists between app runs
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let cacheDir = appSupport.appendingPathComponent("MLXModels", isDirectory: true)
-        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        return cacheDir
-    }
+    // MARK: - 私有属性
 
-    /// Initialize and load persisted downloaded models
+    /// 内存缓存：同一会话内避免重复加载，最多缓存 1 个模型防止 OOM
+    private let modelCache = NSCache<NSString, ModelContainer>()
+
+    /// 下载用 HubApi → Caches（Hub 库在此路径行为正常，能正确下载）
+    private let downloadHubApi: HubApi = HubApiExtension.default
+
+    /// 加载用 HubApi → Documents（持久化存储，重装 App 后仍可用）
+    private let persistentHubApi: HubApi = HubApiExtension.persistent
+
+    // MARK: - 初始化
+
     init() {
-        // Load persisted downloaded models from UserDefaults
-        if let persisted = UserDefaults.standard.stringArray(forKey: downloadedModelsKey) {
-            downloadedModels = Set(persisted)
-        }
-        
-        NSLog("MLXService init, cache directory: \(modelCacheDirectory.path)")
-        
-        // Check which models are actually cached
-        checkCachedModels()
+        modelCache.countLimit = 1
+        let cacheDir = downloadHubApi.localRepoLocation(Hub.Repo(id: "mlx-community/test"))
+        let docsDir  = persistentHubApi.localRepoLocation(Hub.Repo(id: "mlx-community/test"))
+        NSLog("📂 下载目录 (Caches):    \(cacheDir.deletingLastPathComponent().deletingLastPathComponent().path)")
+        NSLog("📂 持久化目录 (Documents): \(docsDir.deletingLastPathComponent().deletingLastPathComponent().path)")
     }
 
-    /// Save downloaded models to UserDefaults
-    private func persistDownloadedModels() {
-        UserDefaults.standard.set(Array(downloadedModels), forKey: downloadedModelsKey)
+    // MARK: - 工具方法：从 ModelConfiguration 构造 Hub.Repo
+
+    /// ModelConfiguration.name 格式为 "org/repo"，直接用它构造 Hub.Repo
+    private func repo(for configuration: ModelConfiguration) -> Hub.Repo {
+        Hub.Repo(id: configuration.name)
     }
-    
-    /// Check which models are actually cached on disk
-    private func checkCachedModels() {
-        let fileManager = FileManager.default
-        
-        for model in MLXService.availableModels {
-            let modelPath = getModelCachePath(for: model.name)
-            if fileManager.fileExists(atPath: modelPath) {
-                NSLog("Model found in cache: \(model.name)")
+
+    // MARK: - 模型存在性检查
+
+    /// 检查模型文件是否完整下载（必须有 config.json，否则视为未完成）
+    /// 只检查目录存在是不够的——目录可能是上次下载失败的残留
+    func isModelDownloaded(_ model: LMModel) -> Bool {
+        if modelCache.object(forKey: model.name as NSString) != nil { return true }
+
+        // config.json 是每个模型必须有的文件，以它作为下载完成的标志
+        let requiredFile = "config.json"
+
+        for hubApi in [persistentHubApi, downloadHubApi] {
+            let dir = hubApi.localRepoLocation(repo(for: model.configuration))
+            let configPath = dir.appendingPathComponent(requiredFile).path
+            if FileManager.default.fileExists(atPath: configPath) {
+                NSLog("isModelDownloaded(\(model.name)): true (\(dir.path))")
+                return true
             }
         }
-    }
-    
-    /// Get the model cache path for a specific model
-    private func getModelCachePath(for modelName: String) -> String {
-        let modelIdentifier = getModelIdentifier(for: modelName)
-        return modelCacheDirectory
-            .appendingPathComponent("models--mlx-community--\(modelIdentifier)/snapshots/main")
-            .path
-    }
-    
-    /// Get model identifier from model name
-    private func getModelIdentifier(for modelName: String) -> String {
-        switch modelName {
-       
-        case "qwen2VL:2b":
-            return "Qwen2-VL-2B-Instruct-4bit"
-        default:
-            return modelName.replacingOccurrences(of: ":", with: "-")
-        }
+
+        NSLog("isModelDownloaded(\(model.name)): false")
+        return false
     }
 
-    /// Loads a model from the hub or retrieves it from cache.
-    /// - Parameter model: The model configuration to load
-    /// - Returns: A ModelContainer instance containing the loaded model
-    /// - Throws: Errors that might occur during model loading
+    /// 检查模型是否已下载（接受模型名称字符串，供 View 直接调用）
+    func isModelDownloaded(_ modelName: String) -> Bool {
+        guard let model = Self.availableModels.first(where: { $0.name == modelName }) else {
+            return false
+        }
+        return isModelDownloaded(model)
+    }
+
+    /// 获取已下载模型占用磁盘空间（字节）
+    func modelDiskSize(_ model: LMModel) -> Int64? {
+        // Documents 优先，否则查 Caches
+        let docsDir = persistentHubApi.localRepoLocation(repo(for: model.configuration))
+        let cacheDir = downloadHubApi.localRepoLocation(repo(for: model.configuration))
+        let dir = FileManager.default.fileExists(atPath: docsDir.path) ? docsDir : cacheDir
+        guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
+        let sizeKey = URLResourceKey.fileSizeKey
+        guard let enumerator = FileManager.default.enumerator(
+            at: dir, includingPropertiesForKeys: [sizeKey], options: .skipsHiddenFiles
+        ) else { return nil }
+
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            if let size = try? url.resourceValues(forKeys: [sizeKey]).fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+
+    /// 删除本地已下载的模型文件
+    func deleteModel(_ model: LMModel) throws {
+        modelCache.removeObject(forKey: model.name as NSString)
+        // 两个目录都清除
+        for dir in [
+            persistentHubApi.localRepoLocation(repo(for: model.configuration)),
+            downloadHubApi.localRepoLocation(repo(for: model.configuration))
+        ] {
+            if FileManager.default.fileExists(atPath: dir.path) {
+                try FileManager.default.removeItem(at: dir)
+            }
+        }
+        NSLog("🗑️ 已删除模型: \(model.name)")
+    }
+
+    // MARK: - SettingsView 兼容接口
+
+    /// 获取已下载的模型列表
+    func getDownloadedModels() -> [LMModel] {
+        Self.availableModels.filter { isModelDownloaded($0) }
+    }
+
+    /// 获取模型磁盘占用（按模型名查找）
+    func getModelSize(_ modelName: String) -> Int64? {
+        guard let model = Self.availableModels.first(where: { $0.name == modelName }) else {
+            return nil
+        }
+        return modelDiskSize(model)
+    }
+
+    /// 删除模型（按模型名，供 SettingsView 使用）
+    func removeModel(_ modelName: String) {
+        guard let model = Self.availableModels.first(where: { $0.name == modelName }) else {
+            NSLog("removeModel: 找不到模型 \(modelName)")
+            return
+        }
+        try? deleteModel(model)
+    }
+
+    /// 清除所有已下载模型
+    func clearAllModels() {
+        modelCache.removeAllObjects()
+        for model in Self.availableModels {
+            try? deleteModel(model)
+        }
+        NSLog("🗑️ 所有模型已清除")
+    }
+
+    // MARK: - 诊断
+
+    /// 批量检测所有模型在当前镜像下是否可访问（用于启动时诊断）
+    func checkAllModelsAccessibility() async -> [String: Bool] {
+        var results: [String: Bool] = [:]
+        await withTaskGroup(of: (String, Bool).self) { group in
+            for model in Self.availableModels {
+                group.addTask {
+                    let repoId = model.configuration.name
+                    let urlString = "https://hf-mirror.com/api/models/\(repoId)"
+                    guard let url = URL(string: urlString) else { return (model.name, false) }
+                    do {
+                        let (_, response) = try await URLSession.shared.data(from: url)
+                        let ok = (response as? HTTPURLResponse)?.statusCode == 200
+                        return (model.name, ok)
+                    } catch {
+                        return (model.name, false)
+                    }
+                }
+            }
+            for await (name, accessible) in group {
+                results[name] = accessible
+                NSLog(accessible ? "✅ 可访问: \(name)" : "❌ 不可访问: \(name)")
+            }
+        }
+        return results
+    }
+
+    // MARK: - 模型加载（核心）
+
+    // MARK: - 目录查找
+
+    /// 返回模型的本地目录：优先 Documents（持久化），其次 Caches（刚下载）
+    private func localModelDirectory(for model: LMModel) -> URL {
+        let docsDir   = persistentHubApi.localRepoLocation(repo(for: model.configuration))
+        let cachesDir = downloadHubApi.localRepoLocation(repo(for: model.configuration))
+
+        let configInDocs   = docsDir.appendingPathComponent("config.json").path
+        let configInCaches = cachesDir.appendingPathComponent("config.json").path
+
+        if FileManager.default.fileExists(atPath: configInDocs) {
+            NSLog("📂 使用 Documents 目录: \(docsDir.path)")
+            return docsDir
+        }
+        NSLog("📂 使用 Caches 目录: \(cachesDir.path)")
+        return cachesDir
+    }
+
+    // MARK: - 加载模型（核心）
+
+    /// 加载优先级：内存缓存 → Documents → Caches → 下载到 Caches 再迁移到 Documents
     private func load(model: LMModel) async throws -> ModelContainer {
-        NSLog("Load model: \(model.name)")
+        NSLog("load(\(model.name)) 开始")
+
+        // 1. 内存缓存命中
+        if let cached = modelCache.object(forKey: model.name as NSString) {
+            NSLog("⚡️ 内存缓存命中: \(model.name)")
+            return cached
+        }
+
         Memory.cacheLimit = 20 * 1024 * 1024
 
-        // Return cached model if available (memory cache)
-        if let container = modelCache.object(forKey: model.name as NSString) {
-            NSLog("Got model from memory cache")
-            return container
+        await MainActor.run {
+            self.isLoadingModel = true
+            self.modelDownloadProgress = nil
         }
-        
-        // Check if model files exist in disk cache
-        let modelCachePath = getModelCachePath(for: model.name)
-        let fileManager = FileManager.default
-        
-        if fileManager.fileExists(atPath: modelCachePath) {
-            NSLog("Model exists in disk cache: \(modelCachePath)")
-        } else {
-            NSLog("Model not in disk cache, will download")
-        }
-        
-        // Select appropriate factory based on model type
-        let factory: ModelFactory =
-            switch model.type {
-            case .llm:
-                LLMModelFactory.shared
-            case .vlm:
-                VLMModelFactory.shared
-            }
+        defer { Task { @MainActor in self.isLoadingModel = false } }
 
-        // Load model - will use cached files if available, otherwise download
-        NSLog("Calling loadContainer for model: \(model.name)")
-        let container = try await factory.loadContainer(
-            hub: HubApiExtension.default, configuration: model.configuration
-        ) { progress in
-            NSLog("Download/Load progress: \(Int(progress.fractionCompleted * 100))%")
-            Task { @MainActor in
-                self.modelDownloadProgress = progress
-            }
+        // 2. 文件不存在时先下载到 Caches
+        if !isModelDownloaded(model) {
+            NSLog("📥 文件未完整，启动下载: \(model.name)")
+            try await runResumableDownload(model: model)
+            // 下载完成后迁移到 Documents（持久化）
+            migrateModelToDocuments(model)
         }
 
-        // Cache in memory
+        // 3. 找到本地目录（Documents 优先，其次 Caches）
+        let localDir = localModelDirectory(for: model)
+        NSLog("📦 从本地目录加载: \(localDir.path)")
+
+        // 4. 用本地路径构造 ModelConfiguration，Hub 库看到 directory 形式的 id
+        //    会直接读本地文件，不请求 revision API，完全离线
+        let localConfig = ModelConfiguration(directory: localDir)
+
+        let factory: ModelFactory = switch model.type {
+            case .llm: LLMModelFactory.shared
+            case .vlm: VLMModelFactory.shared
+        }
+
+        let container: ModelContainer
+        do {
+            container = try await factory.loadContainer(
+                hub: downloadHubApi,          // hub 仍需传入，但 directory config 不会触发网络请求
+                configuration: localConfig
+            ) { _ in }
+        } catch {
+            NSLog("❌ loadContainer 失败: \(error)")
+            NSLog("❌ 详情: \((error as NSError).domain) code=\((error as NSError).code)")
+            throw error
+        }
+
         modelCache.setObject(container, forKey: model.name as NSString)
-        
-        // Mark as downloaded
-        downloadedModels.insert(model.name)
-        persistDownloadedModels()
-        
-        NSLog("Model loaded successfully: \(model.name)")
+        NSLog("✅ 模型加载完成: \(model.name)")
         return container
     }
 
-    /// Manually download a model without loading it into memory
-    /// - Parameter model: The model to download
-    func downloadModel(_ model: LMModel) async throws {
-        NSLog("Manual download for model: \(model.name)")
-        
-        let factory: ModelFactory =
-            switch model.type {
-            case .llm:
-                LLMModelFactory.shared
-            case .vlm:
-                VLMModelFactory.shared
-            }
+    /// 下载完成后将模型从 Caches 迁移到 Documents（防止系统在磁盘不足时清除）
+    private func migrateModelToDocuments(_ model: LMModel) {
+        let src = downloadHubApi.localRepoLocation(repo(for: model.configuration))
+        let dst = persistentHubApi.localRepoLocation(repo(for: model.configuration))
 
-        modelDownloadProgress = nil
+        guard FileManager.default.fileExists(atPath: src.path),
+              !FileManager.default.fileExists(atPath: dst.path) else {
+            return
+        }
 
-        // Download model
-        _ = try await factory.loadContainer(
-            hub: HubApiExtension.default, configuration: model.configuration
-        ) { progress in
+        do {
+            try FileManager.default.createDirectory(
+                at: dst.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.moveItem(at: src, to: dst)
+            NSLog("📦 模型已迁移到 Documents: \(model.name)")
+        } catch {
+            NSLog("⚠️ 迁移失败（Caches 版本仍可用）: \(error)")
+        }
+    }
+
+    /// 启动 ResumableModelDownloader，下载到 Caches 目录
+    private func runResumableDownload(model: LMModel) async throws {
+        // 下载目标：Caches（Hub 库在此路径能正常工作）
+        let destDir = downloadHubApi.localRepoLocation(repo(for: model.configuration))
+        let downloader = ResumableModelDownloader(
+            repoId: model.configuration.name,
+            mirrorBase: "https://hf-mirror.com",
+            destinationDir: destDir
+        )
+
+        let progress = Progress(totalUnitCount: 100)
+        await MainActor.run { self.modelDownloadProgress = progress }
+
+        _ = try await downloader.download { downloaded, total, filesDone, filesTotal in
             Task { @MainActor in
-                self.modelDownloadProgress = progress
+                if total > 0 {
+                    progress.totalUnitCount = total
+                    progress.completedUnitCount = downloaded
+                }
+                let pct = total > 0 ? Int(Double(downloaded) / Double(total) * 100) : 0
+                if pct % 10 == 0 {
+                    NSLog("⬇️ 下载进度 \(model.name): \(pct)% (\(filesDone)/\(filesTotal) 文件)")
+                }
             }
         }
-        
-        // Mark as downloaded
-        downloadedModels.insert(model.name)
-        persistDownloadedModels()
-        modelDownloadProgress = nil
-        
-        NSLog("Model downloaded successfully: \(model.name)")
+
+        await MainActor.run { self.modelDownloadProgress = nil }
     }
 
-    /// Check if a model is already downloaded (in disk cache)
-    /// - Parameter modelName: Name of the model to check
-    /// - Returns: True if the model is available in cache
-    func isModelDownloaded(_ modelName: String) -> Bool {
-        // Check memory cache first
-        if modelCache.object(forKey: modelName as NSString) != nil {
-            return true
+    // MARK: - 手动预下载
+
+    /// 预下载模型到磁盘，不占用 GPU 内存（适合在设置页面提前下载）
+    func downloadModel(_ model: LMModel) async throws {
+        NSLog("📥 手动预下载: \(model.name)")
+
+        await MainActor.run {
+            self.isLoadingModel = true
+            self.modelDownloadProgress = nil
         }
-        
-        // Check disk cache
-        let modelCachePath = getModelCachePath(for: modelName)
-        let exists = FileManager.default.fileExists(atPath: modelCachePath)
-        NSLog("isModelDownloaded(\(modelName)): \(exists)")
-        return exists
-    }
-
-    /// Remove a model from cache
-    /// - Parameter modelName: Name of the model to remove
-    func removeModel(_ modelName: String) {
-        modelCache.removeObject(forKey: modelName as NSString)
-        
-        // Remove from disk - remove the entire model directory
-        let modelCachePath = getModelCachePath(for: modelName)
-        let modelDir = URL(fileURLWithPath: modelCachePath).deletingLastPathComponent()
-        try? FileManager.default.removeItem(at: modelDir)
-        
-        downloadedModels.remove(modelName)
-        persistDownloadedModels()
-        
-        NSLog("Model removed: \(modelName)")
-    }
-
-    /// Get list of downloaded models with their info
-    /// - Returns: Array of downloaded LMModel objects
-    func getDownloadedModels() -> [LMModel] {
-        return MLXService.availableModels.filter { isModelDownloaded($0.name) }
-    }
-
-    /// Get size of a downloaded model
-    /// - Parameter modelName: Name of the model
-    /// - Returns: Size in bytes, or nil if not found
-    func getModelSize(_ modelName: String) -> Int64? {
-        let modelCachePath = getModelCachePath(for: modelName)
-        let modelDir = URL(fileURLWithPath: modelCachePath).deletingLastPathComponent()
-        
-        guard FileManager.default.fileExists(atPath: modelDir.path) else {
-            return nil
-        }
-        
-        guard let enumerator = FileManager.default.enumerator(at: modelDir, includingPropertiesForKeys: [.fileSizeKey]) else {
-            return nil
-        }
-        
-        var totalSize: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let attributes = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
-               let fileSize = attributes.fileSize {
-                totalSize += Int64(fileSize)
+        defer {
+            Task { @MainActor in
+                self.isLoadingModel = false
+                self.modelDownloadProgress = nil
             }
         }
-        
-        return totalSize
+
+        try await runResumableDownload(model: model)
+        migrateModelToDocuments(model)
+        NSLog("✅ 预下载完成，已迁移到 Documents: \(model.name)")
     }
 
-    /// Clear all cached models
-    func clearAllModels() {
-        modelCache.removeAllObjects()
-        
-        // Clear disk cache
-        try? FileManager.default.removeItem(at: modelCacheDirectory)
-        try? FileManager.default.createDirectory(at: modelCacheDirectory, withIntermediateDirectories: true)
-        
-        downloadedModels.removeAll()
-        persistDownloadedModels()
-        
-        NSLog("All models cleared")
-    }
+    // MARK: - 文本生成
 
-    /// Generates text based on the provided messages using the specified model.
+    /// 生成文本流
     /// - Parameters:
-    ///   - messages: Array of chat messages including user, assistant, and system messages
-    ///   - model: The language model to use for generation
-    /// - Returns: An AsyncStream of generated text tokens
-    /// - Throws: Errors that might occur during generation
+    ///   - messages: 对话消息列表（含图片/视频 URL）
+    ///   - model: 使用的模型
+    /// - Returns: 异步 Token 生成流
     func generate(messages: [Message], model: LMModel) async throws -> AsyncStream<Generation> {
-        NSLog("Start to generate from model \(model.name)")
+        NSLog("generate() 使用模型: \(model.name)")
         let modelContainer = try await load(model: model)
 
-        // Map app-specific Message type to Chat.Message for model input
-        let chat = messages.map { message in
-            let role: Chat.Message.Role =
-                switch message.role {
-                case .assistant:
-                    .assistant
-                case .user:
-                    .user
-                case .system:
-                    .system
-                }
-
-            // Process any attached media for VLM models
-            NSLog("image count: \(message.images.count), video count: \(message.videos.count)")
-            let images: [UserInput.Image] = message.images.map { imageURL in .url(imageURL) }
-            let videos: [UserInput.Video] = message.videos.map { videoURL in .url(videoURL) }
-
-            return Chat.Message(
-                role: role, content: message.content, images: images, videos: videos)
+        let chat = messages.map { message -> Chat.Message in
+            let role: Chat.Message.Role = switch message.role {
+                case .assistant: .assistant
+                case .user:      .user
+                case .system:    .system
+            }
+            NSLog("message role=\(role), images=\(message.images.count), videos=\(message.videos.count)")
+            let images: [UserInput.Image] = message.images.map { .url($0) }
+            let videos: [UserInput.Video] = message.videos.map { .url($0) }
+            return Chat.Message(role: role, content: message.content, images: images, videos: videos)
         }
 
-        // Prepare input for model processing
         let userInput = UserInput(
-            chat: chat, processing: .init(resize: .init(width: 1024, height: 1024)))
+            chat: chat,
+            processing: .init(resize: .init(width: 1024, height: 1024))
+        )
 
-        // Generate response using the model
         return try await modelContainer.perform { (context: ModelContext) in
             let lmInput = try await context.processor.prepare(input: userInput)
-            // Set temperature for response randomness (0.7 provides good balance)
             let parameters = GenerateParameters(temperature: 0.7)
-
-            return try MLXLMCommon.generate(
-                input: lmInput, parameters: parameters, context: context)
+            return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }
 }

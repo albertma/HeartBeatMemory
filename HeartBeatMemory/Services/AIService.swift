@@ -361,12 +361,12 @@ class AIService {
         var cleanedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 安全地提取JSON
-        if let jsonStart = cleanedResponse.range(of: "{"),
-           let jsonEnd = cleanedResponse.range(of: "}", options: .backwards) {
+        if let jsonStart = cleanedResponse.firstIndex(of: "{"),
+           let jsonEnd = cleanedResponse.lastIndex(of: "}") {
             // 确保start在end之前
-            if jsonStart.lowerBound < jsonEnd.upperBound {
-                NSLog("cleanedResponse length: \(cleanedResponse.count), jsonStart.lowerBound:\(jsonStart.lowerBound), jsonEnd.upperBound:\(jsonEnd.upperBound)")
-                cleanedResponse = String(cleanedResponse[jsonStart.lowerBound...jsonEnd.upperBound])
+            if jsonStart < jsonEnd {
+                NSLog("cleanedResponse length: \(cleanedResponse.count), jsonStart:\(jsonStart), jsonEnd:\(jsonEnd)")
+                cleanedResponse = String(cleanedResponse[jsonStart...jsonEnd])
             }
         }
         

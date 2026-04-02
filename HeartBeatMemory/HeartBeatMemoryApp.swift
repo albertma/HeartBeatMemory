@@ -24,7 +24,7 @@ class AppState: ObservableObject {
     private let memoriesKey = "HeartBeatMemories"
     
     init() {
-        setenv("HF_ENDPOINT", "https://hf-mirror.com/", 1)
+        HubApiExtension.configureMirror()
         self.isFirstLaunch = !UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
         if isFirstLaunch {
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
