@@ -139,12 +139,14 @@ struct MemoryCard: View {
                 .font(.body)
                 .lineLimit(3)
             
+            // 👇 这里是修复后的整齐标签
             if !hbMemory.aiTags.isEmpty {
-                HStack {
+                FlowLayout(spacing: 8, lineSpacing: 6) {
                     ForEach(hbMemory.aiTags, id: \.self) { tag in
                         Text("#\(tag)")
                             .font(.caption)
                             .foregroundColor(.blue)
+                            .lineLimit(1) // 强制不折行
                     }
                 }
             }
@@ -175,6 +177,50 @@ struct MemoryCard: View {
     }
 }
 
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 0
+        var rows: [CGFloat] = []
+        var currentRowWidth: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentRowWidth + size.width > maxWidth, !currentRowWidth.isZero {
+                rows.append(currentRowHeight)
+                currentRowWidth = 0
+                currentRowHeight = 0
+            }
+            currentRowWidth += size.width + spacing
+            currentRowHeight = max(currentRowHeight, size.height)
+        }
+        
+        rows.append(currentRowHeight)
+        let totalHeight = rows.reduce(0) { $0 + $1 } + CGFloat(rows.count - 1) * lineSpacing
+        return CGSize(width: maxWidth, height: totalHeight)
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var maxHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += maxHeight + lineSpacing
+                maxHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: .init(size))
+            x += size.width + spacing
+            maxHeight = max(maxHeight, size.height)
+        }
+    }
+}
 // MARK: - Memory Detail View
 
 struct MemoryDetailView: View {
@@ -338,15 +384,13 @@ struct MemoryDetailView: View {
         }
     }
     
-    // MARK: - Tags Section
-    
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("AI标签", systemImage: "tag.fill")
                 .font(.headline)
                 .foregroundColor(.orange)
-            
-            FlowLayout(spacing: 8) {
+
+            FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(memory.aiTags, id: \.self) { tag in
                     Text("#\(tag)")
                         .font(.subheadline)
@@ -354,9 +398,14 @@ struct MemoryDetailView: View {
                         .padding(.vertical, 6)
                         .background(Color.orange.opacity(0.15))
                         .cornerRadius(16)
+                        .foregroundColor(.orange)
+                        .lineLimit(1) // 👈 强制不换行，彻底杜绝乱序
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading) // 👈 强制左对齐
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
     }
 }
 
@@ -497,49 +546,3 @@ struct LocationRow: View {
     }
 }
 
-// MARK: - Flow Layout for Tags
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-    
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
-        return result.size
-    }
-    
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x, 
-                                      y: bounds.minY + result.positions[index].y),
-                         proposal: .unspecified)
-        }
-    }
-    
-    struct FlowResult {
-        var size: CGSize = .zero
-        var positions: [CGPoint] = []
-        
-        init(in width: CGFloat, subviews: Subviews, spacing: CGFloat) {
-            var x: CGFloat = 0
-            var y: CGFloat = 0
-            var rowHeight: CGFloat = 0
-            
-            for subview in subviews {
-                let size = subview.sizeThatFits(.unspecified)
-                
-                if x + size.width > width && x > 0 {
-                    x = 0
-                    y += rowHeight + spacing
-                    rowHeight = 0
-                }
-                
-                positions.append(CGPoint(x: x, y: y))
-                rowHeight = max(rowHeight, size.height)
-                x += size.width + spacing
-            }
-            
-            self.size = CGSize(width: width, height: y + rowHeight)
-        }
-    }
-}

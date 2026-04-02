@@ -230,7 +230,7 @@ class AIService {
             .replacingOccurrences(of: "\n", with: ",")
         
         // 按逗号分割
-        var keywords = cleaned.components(separatedBy: ",")
+        let keywords = cleaned.components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         
@@ -260,11 +260,11 @@ class AIService {
         NSLog("Build LLM request message for \(dateString)")
         
         var prompt = """
-        请分析以下数据，为 \(dateString) 生成一条温暖的"心跳回忆"。
+        请分析以下数据，为 \(dateString) 生成一条温暖的"回忆日记"。
         
         要求：
         1. 生成一个简短有感的标题（10字内）
-        2. 用2-3句话总结当天的美好瞬间
+        2. 用2-3句话根据下面的数据，总结当天的美好瞬间
         3. 判断心情类型：开心/难过/激动/平静/感恩/怀念/平常
         4. 分类：旅行/家庭/工作/朋友/爱好/美食/里程碑/日常/其他
         5. 提取3-5个关键词标签
@@ -273,7 +273,7 @@ class AIService {
         """
         
         if !events.isEmpty {
-            prompt += "\n📅 日历事件：\n"
+            prompt += "\n 日历事件：\n"
             for event in events.prefix(10) {
                 prompt += "- \(event.title)"
                 if let loc = event.location { prompt += " @\(loc)" }
@@ -283,7 +283,7 @@ class AIService {
         }
         
         if !locations.isEmpty {
-            prompt += "\n📍 位置：\n"
+            prompt += "\n 位置：\n"
             for loc in locations.prefix(5) {
                 if !loc.name.isEmpty {
                     prompt += "- \(loc.name)\n"
@@ -292,7 +292,7 @@ class AIService {
         }
         
         if !photoKeywords.isEmpty {
-            prompt += "\n📷 照片内容关键词：\n"
+            prompt += "\n 照片内容关键词：\n"
             // 按5个一组显示，便于阅读
             let groupedKeywords = stride(from: 0, to: min(photoKeywords.count, 25), by: 5).map {
                 photoKeywords[$0..<min($0 + 5, photoKeywords.count)].joined(separator: "、")
