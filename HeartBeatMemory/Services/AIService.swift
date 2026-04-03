@@ -3,6 +3,7 @@ import MLXLMCommon
 import Photos
 import UIKit
 import ImageIO
+import CoreLocation
 
 /// AI分析服务
 class AIService {
@@ -25,119 +26,180 @@ class AIService {
         locations: [LocationData]
     ) async throws -> HeartBeatMemory {
         
-        // 1. 先用VLM分析每张照片，提取关键词
+        // 1. 先用VLM分析每张照片，提取关键词和地点信息
         var photoKeywords: [String] = []
+        var photoLocations: [LocationData] = []
+        
         for photo in photos.prefix(20) {  // 限制最多20张照片
+            // 收集照片的地点信息
+            if let photoLoc = photo.location {
+                // 检查是否已存在相同位置
+                let exists = photoLocations.contains { existing in
+                    abs(existing.latitude - photoLoc.latitude) < 0.001 && 
+                    abs(existing.longitude - photoLoc.longitude) < 0.001
+                }
+                if !exists {
+                    // 逆地理编码获取地点名称
+                    let locationName = await reverseGeocode(latitude: photoLoc.latitude, longitude: photoLoc.longitude)
+                    let namedLocation = LocationData(
+                        name: locationName,
+                        latitude: photoLoc.latitude,
+                        longitude: photoLoc.longitude,
+                        timestamp: photoLoc.timestamp
+                    )
+                    photoLocations.append(namedLocation)
+                }
+            }
+            
+            // VLM分析照片内容
             if let keywords = await analyzePhoto(photo) {
                 photoKeywords.append(contentsOf: keywords)
             }
         }
         
         NSLog("Photo keywords extracted: \(photoKeywords)")
+        NSLog("Photo locations extracted: \(photoLocations.map { $0.name })")
         
         if photoKeywords.count > 5{
             photoKeywords = Array(photoKeywords.prefix(5))
         }
-        // 2. 构建包含照片关键词的prompt
+        
+        // 合并传入的locations和照片的locations
+        let allLocations = locations + photoLocations
+        
+        // 2. 构建包含照片关键词和地点的prompt
         let (systemMessage, userMessage) = buildMessages(
             date: date,
             events: events,
             photoKeywords: photoKeywords,
-            locations: locations
+            locations: allLocations
         )
         
         // 3. 使用LLM生成回忆
         let response = try await callMLX(messages: [systemMessage, userMessage])
         
-        return parseMemoryResponse(response, date: date, events: events, photos: photos, locations: locations, photoKeywords: photoKeywords)
+        return parseMemoryResponse(response, date: date, events: events, photos: photos, locations: allLocations, photoKeywords: photoKeywords)
+    }
+    
+    // MARK: - 逆地理编码
+    private func reverseGeocode(latitude: Double, longitude: Double) async -> String {
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        let geocoder = CLGeocoder()
+        
+        do {
+            let placemarks = try await geocoder.reverseGeocodeLocation(location)
+            if let placemark = placemarks.first {
+               
+                var components: [String] = []
+                if let aresOfInterest = placemark.areasOfInterest{
+                    if !aresOfInterest.isEmpty{
+                        components.append(contentsOf: aresOfInterest)
+                    }
+                }
+                if let subThoroughfare = placemark.subThoroughfare{
+                    components.append(subThoroughfare)
+                }
+                if let thoroughfare = placemark.thoroughfare{
+                    components.append(thoroughfare)
+                }
+                if let locality = placemark.locality {
+                    components.append(locality)
+                }
+                if let country = placemark.country {
+                    components.append(country)
+                }
+                let name = components.joined(separator: " ")
+                return name.isEmpty ? "未知地点" : name
+            }
+        } catch {
+            NSLog("Reverse geocode failed: \(error)")
+        }
+        return "未知地点"
     }
     
     // MARK: - 分析单张照片
     
     private func analyzePhoto(_ photo: PhotoData) async -> [String]? {
-        NSLog("Start to analyzePhoto")
+        NSLog("🔍 Start to analyze photo: \(photo.identifier)")
         
-        // 确保清理旧的VLM图片
+        // 1. 确保清理旧的 VLM 图片资源
         cleanupVLMImages()
         
-        // 加载图片
+        // 2. 加载图片
         guard let image = await loadImage(from: photo) else {
-            NSLog("Failed to load image for photo: \(photo.identifier)")
+            NSLog("❌ Failed to load image for photo: \(photo.identifier)")
             return nil
         }
-        NSLog("Image loaded successfully, size: \(image.size)")
+        NSLog("✅ Image loaded, size: \(image.size)")
         
-        // 检查VLM模型
+        // 3. 检查 VLM 模型
         guard let vlm = visionModel else {
-            NSLog("No VLM model available for photo analysis")
+            NSLog("❌ No VLM model available")
             return nil
         }
-        NSLog("vlm model: \(vlm.name)")
         
-        // 保存图片到临时文件
+        // 4. 保存图片到临时文件
+        // 💡 建议：在 saveTempImage 内部确保图片已被缩放（例如长边不超过 1024），
+        // 否则 Qwen2VL 处理 4K 图片会非常慢。
         guard let tempURL = saveTempImage(image: image, identifier: photo.identifier) else {
-            NSLog("Failed to save image for VLM analysis")
+            NSLog("❌ Failed to save temp image")
             return nil
         }
         
-        // 验证文件存在
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: tempURL.path) else {
-            NSLog("Temp file does not exist: \(tempURL.path)")
-            return nil
-        }
-        
-        // 检查文件大小
-        if let attributes = try? fileManager.attributesOfItem(atPath: tempURL.path),
-           let fileSize = attributes[.size] as? Int64 {
-            NSLog("Saved image size: \(fileSize) bytes")
-            if fileSize < 1000 {
-                NSLog("Warning: Image file too small, may be corrupted")
-            }
-        }
-        
         defer {
-            // 清理临时文件
             try? fileManager.removeItem(at: tempURL)
         }
         
-        // 重要：对于安全范围内的URL，需要访问资源
-        // 但Application Support目录不需要安全访问，所以注释掉
-        // tempURL.startAccessingSecurityScopedResource()
-        // defer { tempURL.stopAccessingSecurityScopedResource() }
-        
         do {
-            // 构建图像分析prompt
+            // --- 优化点：增强 Prompt ---
             let analysisPrompt = """
-            分析这张图片，提取3-5个关键词描述照片中的内容。
-            关键词应该包括：场景、活动、物品、人物、情感等。
-            只返回关键词，用逗号分隔，不要其他内容。
+            请仔细观察这张照片，提取 3-5 个能够描述画面内容的关键词或短语。
+            
+            要求：
+            1. 语言：必须使用简体中文。
+            2. 内容：包含场景（如“海边日落”）、物体（如“咖啡”）、动作（如“奔跑”）或氛围（如“温馨”）。
+            3. 格式：仅返回关键词，用逗号分隔。不要包含序号、句号或其他解释性文字。
+            
+            示例输出：
+            海滩, 夕阳, 奔跑的狗, 惬意
             """
             
-            // 创建消息，包含图片URL
+            // 5. 创建消息
+            // 注意：确保 Message 的 init 方法能正确处理本地文件 URL
             let userMessage = Message(role: .user, content: analysisPrompt, images: [tempURL])
-            let systemMessage = Message(role: .system, content: "你是一个专业的图像分析助手，可以准确描述照片内容并提取关键信息。")
             
-            NSLog("Starting VLM analysis with image URL: \(tempURL.path)")
-            NSLog("Image URL absoluteString: \(tempURL.absoluteString)")
+            // 优化 System Prompt，赋予角色感
+            let systemMessage = Message(
+                role: .system,
+                content: "你是一个精准的视觉分析助手，擅长捕捉图片中的关键元素和情感氛围。"
+            )
+            
+            NSLog("🚀 Starting VLM generation...")
             
             var response = ""
+            // 6. 流式获取结果
             let stream = try await mlxService.generate(messages: [systemMessage, userMessage], model: vlm)
             
             for try await token in stream {
                 response += token.chunk ?? ""
             }
             
-            NSLog("VLM response: \(response.prefix(200))")
+            NSLog("📝 Raw VLM response: \(response)")
             
-            // 解析关键词
+            // 7. 解析关键词
             let keywords = parseKeywords(from: response)
-            NSLog("Photo analysis keywords: \(keywords)")
+            
+            if keywords.isEmpty {
+                NSLog("⚠️ Parsed keywords are empty")
+            } else {
+                NSLog("✅ Final keywords: \(keywords)")
+            }
             
             return keywords
-        
+            
         } catch {
-            NSLog("Photo analysis failed: \(error)")
+            NSLog("❌ VLM analysis error: \(error)")
             return nil
         }
     }
@@ -224,25 +286,26 @@ class AIService {
     // MARK: - 解析关键词
     
     private func parseKeywords(from response: String) -> [String] {
-        // 清理响应，去除换行和多余空格
-        let cleaned = response
+        // 1. 去除常见的废话前缀
+        var cleaned = response
+            .replacingOccurrences(of: "关键词：", with: "")
+            .replacingOccurrences(of: "Keywords:", with: "")
+            .replacingOccurrences(of: "```", with: "") // 防止模型输出 markdown
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\n", with: ",")
         
-        // 按逗号分割
-        let keywords = cleaned.components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        // 2. 按逗号或换行符分割
+        let separators = CharacterSet(charactersIn: ",，\n")
+        let rawKeywords = cleaned.components(separatedBy: separators)
         
-        // 去重并限制数量
-        var uniqueKeywords: [String] = []
-        for keyword in keywords {
-            if !uniqueKeywords.contains(keyword) && uniqueKeywords.count < 20 {
-                uniqueKeywords.append(keyword)
-            }
+        // 3. 清洗每个关键词并过滤空值
+        let result = rawKeywords.compactMap { keyword -> String? in
+            let k = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "^[0-9]+[.、]", with: "", options: .regularExpression) // 去除 "1." "2、"
+            return k.isEmpty ? nil : k
         }
         
-        return uniqueKeywords
+        // 4. 去重并限制数量
+        return Array(Set(result)).prefix(5).map { String($0) }
     }
     
     // MARK: - 构建消息
@@ -257,68 +320,62 @@ class AIService {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy年MM月dd日"
         let dateString = dateFormatter.string(from: date)
-        NSLog("Build LLM request message for \(dateString)")
         
-        var prompt = """
-        请分析以下数据，为 \(dateString) 生成一条温暖的"回忆日记"。
+        NSLog("🔨 Build LLM request message for \(dateString)")
         
-        要求：
-        1. 生成一个简短有感的标题（10字内）
-        2. 用2-3句话根据下面的数据，总结当天的美好瞬间
-        3. 判断心情类型：开心/难过/激动/平静/感恩/怀念/平常
-        4. 分类：旅行/家庭/工作/朋友/爱好/美食/里程碑/日常/其他
-        5. 提取3-5个关键词标签
+        // 1. 构建文本上下文 (Context)
+        // 对于多模态模型，文本部分应作为“背景信息”提供，而不是全部依据
+        var contextBuilder = ""
         
-        数据：
-        """
-        
-        if !events.isEmpty {
-            prompt += "\n 日历事件：\n"
-            for event in events.prefix(10) {
-                prompt += "- \(event.title)"
-                if let loc = event.location { prompt += " @\(loc)" }
-                if let notes = event.notes, !notes.isEmpty { prompt += ": \(notes)" }
-                prompt += "\n"
-            }
-        }
-        
+        // 位置信息
         if !locations.isEmpty {
-            prompt += "\n 位置：\n"
-            for loc in locations.prefix(5) {
-                if !loc.name.isEmpty {
-                    prompt += "- \(loc.name)\n"
-                }
-            }
+            let locNames = locations.prefix(3).compactMap { $0.name }.joined(separator: "、")
+            contextBuilder += "📍 所在位置：\(locNames)\n"
         }
         
+        // 日历事件
+        if !events.isEmpty {
+            let eventTitles = events.prefix(3).map { $0.title }.joined(separator: "、")
+            contextBuilder += "📅 日程安排：\(eventTitles)\n"
+        }
+        
+        // 关键词 (作为视觉辅助，防止模型识别错误)
         if !photoKeywords.isEmpty {
-            prompt += "\n 照片内容关键词：\n"
-            // 按5个一组显示，便于阅读
-            let groupedKeywords = stride(from: 0, to: min(photoKeywords.count, 25), by: 5).map {
-                photoKeywords[$0..<min($0 + 5, photoKeywords.count)].joined(separator: "、")
-            }
-            for group in groupedKeywords {
-                prompt += "- \(group)\n"
-            }
+            let topKeywords = photoKeywords.prefix(8).joined(separator: "、")
+            contextBuilder += "🏷️ 画面元素提示：\(topKeywords)\n"
         }
         
-        prompt += """
-        
-        请用JSON格式返回：
+        // 2. 构建核心 Prompt
+        let prompt = """
+        今天是 \(dateString)。请结合**用户提供的图片画面**以及下方的**文本上下文**，写一篇温暖的“回忆日记”。
+
+        ### 文本上下文：
+        \(contextBuilder)
+
+        ### 任务要求：
+        1. **视觉优先**：仔细观察图片，描述画面中的光影、人物表情、动作或氛围（例如：阳光洒在脸上的温暖、朋友大笑的瞬间）。
+        2. **情境融合**：利用文本上下文（地点、日程）来辅助理解图片内容。例如，如果图片是食物且日程是“加班”，请描述为“加班后的慰藉”。
+        3. **语气风格**：使用第一人称（“我”），语气自然、治愈、像是在写手帐或发朋友圈。字数控制在 60-100 字之间。
+        4. **严格格式**：直接返回 JSON 字符串，不要包含 markdown 标记（如 ```json ... ```）。
+
+        ###使用JSON格式返回：
         {
-            "title": "标题",
-            "summary": "总结",
-            "mood": "心情",
-            "category": "分类",
+            "title": "简短且文艺的标题（10字以内）",
+            "summary": "日记正文内容（包含对画面的描述和当下的感受）",
+            "mood": "开心/平静/激动/治愈/怀念/平常",
+            "category": "旅行/美食/日常/聚会/工作/其他",
             "tags": ["标签1", "标签2", "标签3"]
         }
         """
         
+        // 3. 构建 System Message (人设)
         let systemMessage = Message(
             role: .system,
-            content: "你是一个温暖的生活回忆助手，用温柔的语言帮助用户记录生活中的美好瞬间。"
+            content: "你是一个拥有敏锐观察力的多模态生活记录助手。你擅长通过图片细节捕捉情绪，并结合环境信息，用细腻、温暖的文字为用户定格美好瞬间。"
         )
-        NSLog("prompt: \(prompt)")
+        
+        // 4. 构建 User Message
+        // 注意：在实际调用 Qwen2VL 时，请务必在 userMessage 的 content 数组中加入图片数据 (Data 或 URL)
         let userMessage = Message(role: .user, content: prompt)
         
         return (systemMessage, userMessage)
@@ -376,7 +433,7 @@ class AIService {
             .replacingOccurrences(of: "```", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
-        NSLog("Parsing response JSON: \(cleanedResponse.prefix(200))")
+        NSLog("Parsing response JSON: \(cleanedResponse)")
         
         guard let data = cleanedResponse.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

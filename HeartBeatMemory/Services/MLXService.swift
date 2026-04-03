@@ -12,6 +12,7 @@ import Hub
 
 extension ModelConfiguration {
     
+    static let qwen3_1_7b     = ModelConfiguration(id: "mlx-community/Qwen3-1.7B-4bit")
     // VLM
     static let qwen2VL_2b     = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
 }
@@ -26,6 +27,7 @@ class MLXService {
     // ✅ 全部使用 mlx-community repo，保证 hf-mirror.com 可公开访问（无需登录）
     static let availableModels: [LMModel] = [
         LMModel(name: "qwen2VL:2b",   configuration: .qwen2VL_2b,   type: .vlm),
+        LMModel(name: "qwen3:1.7b", configuration: LLMRegistry.qwen3_1_7b_4bit, type: .llm),
     ]
 
     // MARK: - 状态属性
@@ -368,14 +370,17 @@ class MLXService {
             return Chat.Message(role: role, content: message.content, images: images, videos: videos)
         }
 
-        let userInput = UserInput(
-            chat: chat,
-            processing: .init(resize: .init(width: 1024, height: 1024))
-        )
-
+        // Create a local copy of the processing configuration
+        let processing = UserInput.Processing(resize: .init(width: 1024, height: 1024))
+        
         return try await modelContainer.perform { (context: ModelContext) in
+            // Create the UserInput inside the closure to avoid capturing non-Sendable types
+            let userInput = UserInput(
+                chat: chat,
+                processing: processing
+            )
             let lmInput = try await context.processor.prepare(input: userInput)
-            let parameters = GenerateParameters(temperature: 0.7)
+            let parameters = GenerateParameters(temperature: 0.9)
             return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }
