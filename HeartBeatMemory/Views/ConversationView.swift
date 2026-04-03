@@ -11,6 +11,9 @@ import SwiftUI
 struct ConversationView: View {
     /// Array of messages to display in the conversation
     let messages: [Message]
+    
+    /// 外部传入的用于 dismiss keyboard 的 action
+    var dismissKeyboard: (() -> Void)?
 
     var body: some View {
         ScrollView {
@@ -23,6 +26,9 @@ struct ConversationView: View {
         }
         .padding(.vertical, 8)
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .onTapGesture {
+            dismissKeyboard?()
+        }
     }
 }
 
