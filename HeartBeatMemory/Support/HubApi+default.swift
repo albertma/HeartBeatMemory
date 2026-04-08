@@ -14,8 +14,8 @@ enum HubApiExtension {
 
     /// 必须在 App 启动最早期调用（早于任何 HubApi/MLXService 初始化）
     static func configureMirror() {
-        setenv("HF_ENDPOINT", "https://hf-mirror.com", 1)
-        print("🔀 HF_ENDPOINT 已设置为 hf-mirror.com")
+//        setenv("HF_ENDPOINT", "https://hf-mirror.com", 1)
+//        print("🔀 HF_ENDPOINT 已设置为 hf-mirror.com")
     }
 
     // MARK: - 下载用（Caches）

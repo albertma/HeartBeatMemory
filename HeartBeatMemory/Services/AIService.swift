@@ -198,6 +198,9 @@ class AIService {
             
             return keywords
             
+        } catch let error as MLXError {
+            NSLog("⚠️ MLX 后台错误: \(error)")
+            return nil
         } catch {
             NSLog("❌ VLM analysis error: \(error)")
             return nil
@@ -481,4 +484,5 @@ enum AIError: Error {
     case invalidResponse
     case generationFailed
     case photoLoadFailed
+    case appInBackground
 }

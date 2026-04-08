@@ -4,17 +4,15 @@ import MLXLLM
 import MLXLMCommon
 import MLXVLM
 import Hub
+import UIKit
 
 // MARK: - LMModel 扩展：所有模型必须使用 mlx-community 下的公开 repo
-// ⚠️ 不要使用 VLMRegistry/LLMRegistry 内置的 configuration，
-//    它们部分指向原始组织（如 Qwen/、HuggingFaceTB/），在 hf-mirror.com 上需要登录（401）
-//    必须统一使用 mlx-community/ 下的公开镜像版本
 
 extension ModelConfiguration {
     
-    static let qwen3_1_7b     = ModelConfiguration(id: "mlx-community/Qwen3-1.7B-4bit")
-    // VLM
+//    
     static let qwen2VL_2b     = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
+//    static let gemma3n_e2b     = ModelConfiguration(id: "mlx-community/gemma-3n-E2B-4bit")
 }
 
 // MARK: - MLXService
@@ -27,8 +25,12 @@ class MLXService {
     // ✅ 全部使用 mlx-community repo，保证 hf-mirror.com 可公开访问（无需登录）
     static let availableModels: [LMModel] = [
         LMModel(name: "qwen2VL:2b",   configuration: .qwen2VL_2b,   type: .vlm),
-        LMModel(name: "qwen3:1.7b", configuration: LLMRegistry.qwen3_1_7b_4bit, type: .llm),
     ]
+
+    // MARK: - App 状态检查（防止后台 GPU 调用）
+    private var isAppInForeground: Bool {
+        UIApplication.shared.applicationState == .active
+    }
 
     // MARK: - 状态属性
 
@@ -355,6 +357,12 @@ class MLXService {
     ///   - model: 使用的模型
     /// - Returns: 异步 Token 生成流
     func generate(messages: [Message], model: LMModel) async throws -> AsyncStream<Generation> {
+        // 检查 app 是否在前台
+        guard isAppInForeground else {
+            NSLog("🚫 generate() 被拒绝：App 不在 active 状态")
+            throw MLXError.appInBackground
+        }
+
         NSLog("generate() 使用模型: \(model.name)")
         let modelContainer = try await load(model: model)
 
@@ -384,4 +392,12 @@ class MLXService {
             return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }
+}
+
+// MARK: - MLX 错误类型
+
+enum MLXError: Error {
+    case appInBackground
+    case modelNotLoaded
+    case generationFailed(String)
 }

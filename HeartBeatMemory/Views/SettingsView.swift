@@ -1,29 +1,41 @@
 import SwiftUI
 import MLXLMCommon
 
+// 全局 MLXService 实例,确保 UI 能响应状态变化
+@Observable
+class SharedMLXService {
+    static let shared = SharedMLXService()
+
+    let mlxService = MLXService()
+}
+
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("openAIKey") private var openAIKey: String = ""
     @AppStorage("autoGenerate") private var autoGenerate: Bool = true
     @AppStorage("generateTime") private var generateTime: Date = Date()
-    
+
     // MLX Model settings
     @AppStorage("EnableLocalLLM") private var enableLocalLLM: Bool = false
     @AppStorage("MLXModelName") private var selectedModelName: String = ""
-    @State private var mlxService = MLXService()
-    
+
+    // 使用 @Bindable 让 UI 响应 MLXService 状态变化
+    @Bindable private var sharedService = SharedMLXService.shared
+
+    private var mlxService: MLXService { sharedService.mlxService }
+
     @State private var showingKeyInput: Bool = false
     @State private var showingModelInfo: Bool = false
     @State private var showingDownloadedModels: Bool = false
     @State private var modelToDelete: String?
-    
+
     var body: some View {
         NavigationStack {
             List {
                 // MLX Model Section
                 Section("本地AI模型") {
                     Toggle("启用本地模型", isOn: $enableLocalLLM)
-                    
+
                     if enableLocalLLM {
                         // Model Selection
                         Picker("选择模型", selection: $selectedModelName) {
@@ -44,20 +56,18 @@ struct SettingsView: View {
                                 selectedModelName = MLXService.availableModels.first?.name ?? ""
                             }
                         }
-                        
+
                         // Download Progress
                         if let progress = mlxService.modelDownloadProgress, !progress.isFinished {
                             ModelDownloadProgressView(progress: progress)
                         }
-                        
+
                         // Downloaded Models List
                         let downloadedModels = mlxService.getDownloadedModels()
                         if !downloadedModels.isEmpty {
                             NavigationLink {
                                 DownloadedModelsView(
-                                    downloadedModels: downloadedModels,
-                                    selectedModelName: $selectedModelName,
-                                    mlxService: mlxService
+                                    selectedModelName: $selectedModelName
                                 )
                             } label: {
                                 HStack {
@@ -68,7 +78,7 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        
+
                         // Download Model Button (for models not yet downloaded)
                         ForEach(MLXService.availableModels.filter { !mlxService.isModelDownloaded($0.name) }) { model in
                             Button {
@@ -90,7 +100,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 // OpenAI Section (shown when local model is disabled)
                 Section("云端AI设置") {
                     HStack {
@@ -100,26 +110,26 @@ struct SettingsView: View {
                             showingKeyInput = true
                         }
                     }
-                    
+
                     Text("使用OpenAI GPT模型生成回忆")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Section("生成设置") {
                     Toggle("自动生成每日回忆", isOn: $autoGenerate)
-                    
+
                     if autoGenerate {
                         DatePicker("生成时间", selection: $generateTime, displayedComponents: .hourAndMinute)
                     }
                 }
-                
+
                 Section("数据权限") {
                     NavigationLink("管理访问权限") {
                         PermissionsView()
                     }
                 }
-                
+
                 Section("关于") {
                     HStack {
                         Text("版本")
@@ -127,11 +137,11 @@ struct SettingsView: View {
                         Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
-                    
+
                     Link("隐私政策", destination: URL(string: "https://example.com/privacy")!)
                     Link("使用条款", destination: URL(string: "https://example.com/terms")!)
                 }
-                
+
                 Section {
                     Button(role: .destructive) {
                         // 清除数据
@@ -152,7 +162,7 @@ struct SettingsView: View {
             }
         }
     }
-    
+
     private var selectedModelType: LMModel.ModelType {
         MLXService.availableModels.first { $0.name == selectedModelName }?.type ?? .llm
     }
@@ -162,9 +172,9 @@ struct SettingsView: View {
 
 struct ModelDownloadProgressView: View {
     let progress: Progress
-    
+
     @State private var isShowingDetail: Bool = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -177,10 +187,10 @@ struct ModelDownloadProgressView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            
+
             ProgressView(value: progress.fractionCompleted)
                 .progressViewStyle(.linear)
-            
+
             Button {
                 isShowingDetail = true
             } label: {
@@ -194,7 +204,7 @@ struct ModelDownloadProgressView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("模型下载中")
                     .font(.headline)
-                
+
                 ProgressView(value: progress.fractionCompleted) {
                     HStack {
                         Text(progress.localizedAdditionalDescription)
@@ -203,8 +213,8 @@ struct ModelDownloadProgressView: View {
                         Text(progress.localizedDescription)
                     }
                 }
-                
-                Text("首次使用需要下载模型文件，请保持网络连接")
+
+                Text("首次使用需要下载模型文件,请保持网络连接")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -219,14 +229,17 @@ struct ModelDownloadProgressView: View {
 struct ModelInfoView: View {
     let modelName: String
     let modelType: LMModel.ModelType
-    
-    @State private var mlxService = MLXService()
+
+    // 使用 @Bindable 让 UI 响应状态变化
+    @Bindable private var sharedService = SharedMLXService.shared
+    private var mlxService: MLXService { sharedService.mlxService }
+
     @State private var isDownloading: Bool = false
     @State private var downloadError: String?
     @State private var isDownloaded: Bool = false
-    
+
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -236,18 +249,18 @@ struct ModelInfoView: View {
                     InfoRow(label: "特点", value: modelDescription)
                     InfoRow(label: "状态", value: isDownloaded ? "已下载" : "未下载")
                 }
-                
+
                 Section("存储位置") {
                     Text("App Documents/MLXModels/")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(.secondary)
-                    
+
                     // Show model size if downloaded
                     if isDownloaded, let size = mlxService.getModelSize(modelName) {
                         InfoRow(label: "大小", value: formatBytes(size))
                     }
                 }
-                
+
                 // Download Button Section
                 Section {
                     if isDownloaded {
@@ -272,13 +285,13 @@ struct ModelInfoView: View {
                             }
                         }
                         .disabled(true)
-                        
+
                         // Show download progress if available
                         if let progress = mlxService.modelDownloadProgress {
                             VStack(alignment: .leading, spacing: 8) {
                                 ProgressView(value: progress.fractionCompleted)
                                     .progressViewStyle(.linear)
-                                
+
                                 HStack {
                                     Text(progress.localizedAdditionalDescription)
                                         .font(.caption)
@@ -302,16 +315,16 @@ struct ModelInfoView: View {
                             }
                         }
                     }
-                    
+
                     if let error = downloadError {
                         Text(error)
                             .font(.caption)
                             .foregroundColor(.red)
                     }
                 }
-                
+
                 Section {
-                    Text("首次使用需要下载模型文件，请保持网络连接。下载完成后模型将缓存本地。")
+                    Text("首次使用需要下载模型文件,请保持网络连接。下载完成后模型将缓存本地。")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -328,29 +341,29 @@ struct ModelInfoView: View {
             }
         }
     }
-    
+
     private var modelDescription: String {
         switch modelType {
         case .llm:
-            return "纯文本生成，适合日常对话和内容创作"
+            return "纯文本生成,适合日常对话和内容创作"
         case .vlm:
-            return "支持图像理解，可以分析照片内容"
+            return "支持图像理解,可以分析照片内容"
         }
     }
-    
+
     private func checkDownloadStatus() {
         isDownloaded = mlxService.isModelDownloaded(modelName)
     }
-    
+
     private func downloadCurrentModel() async {
         guard let model = MLXService.availableModels.first(where: { $0.name == modelName }) else {
             downloadError = "未找到模型配置"
             return
         }
-        
+
         isDownloading = true
         downloadError = nil
-        
+
         do {
             try await mlxService.downloadModel(model)
             isDownloaded = true
@@ -367,7 +380,7 @@ struct ModelInfoView: View {
 struct InfoRow: View {
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             Text(label)
@@ -392,7 +405,7 @@ struct APIKeyInputView: View {
     @Binding var key: String
     @Environment(\.dismiss) var dismiss
     @State private var inputKey: String = ""
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -441,22 +454,22 @@ struct PermissionRow: View {
     let icon: String
     let title: String
     let description: String
-    
+
     var body: some View {
         HStack {
             Image(systemName: icon)
                 .frame(width: 32)
                 .foregroundColor(.blue)
-            
+
             VStack(alignment: .leading) {
                 Text(title)
                 Text(description)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
-            
+
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(.green)
         }
@@ -466,13 +479,20 @@ struct PermissionRow: View {
 // MARK: - Downloaded Models View
 
 struct DownloadedModelsView: View {
-    let downloadedModels: [LMModel]
     @Binding var selectedModelName: String
-    let mlxService: MLXService
-
+    
+    // 使用 @Bindable 让 UI 响应状态变化
+    @Bindable private var sharedService = SharedMLXService.shared
+    private var mlxService: MLXService { sharedService.mlxService }
+    
     @State private var showingDeleteAlert: Bool = false
     @State private var modelToDelete: String?
     @State private var showingDeleteAllAlert: Bool = false
+    
+    // 动态获取已下载模型列表
+    private var downloadedModels: [LMModel] {
+        mlxService.getDownloadedModels()
+    }
 
     var body: some View {
         List {
@@ -513,7 +533,7 @@ struct DownloadedModelsView: View {
             } header: {
                 Text("已下载模型 (\(downloadedModels.count)个)")
             } footer: {
-                Text("删除模型将清除本地缓存文件，释放存储空间。")
+                Text("删除模型将清除本地缓存文件,释放存储空间。")
             }
 
             Section {
@@ -542,7 +562,7 @@ struct DownloadedModelsView: View {
                 }
             }
         } message: {
-            Text("确定要删除模型 \"\(modelToDelete ?? "")\" 吗？删除后将无法使用该模型，需要重新下载。")
+            Text("确定要删除模型 \"\(modelToDelete ?? "")\" 吗?删除后将无法使用该模型,需要重新下载。")
         }
         .alert("删除所有模型", isPresented: $showingDeleteAllAlert) {
             Button("取消", role: .cancel) { }
@@ -553,7 +573,7 @@ struct DownloadedModelsView: View {
                 }
             }
         } message: {
-            Text("确定要删除所有已下载的模型吗？这将释放所有模型占用的存储空间。")
+            Text("确定要删除所有已下载的模型吗?这将释放所有模型占用的存储空间。")
         }
     }
 }

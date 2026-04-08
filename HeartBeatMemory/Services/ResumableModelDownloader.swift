@@ -29,11 +29,12 @@ actor ResumableModelDownloader {
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest  = 120   // 单次请求超时
+        config.timeoutIntervalForRequest  = 600   // 10分钟单个请求超时（大文件需要更长）
         config.timeoutIntervalForResource = 7 * 24 * 3600  // 整体资源超时 7 天
         config.waitsForConnectivity       = true
         config.allowsExpensiveNetworkAccess    = true
         config.allowsConstrainedNetworkAccess  = true
+        config.waitsForConnectivity = true
         return URLSession(configuration: config)
     }()
 
@@ -85,12 +86,12 @@ actor ResumableModelDownloader {
         var totalSize: Int64 = totalDownloaded
         var filesDone = allFiles.count - pending.count
 
-        // 5. 逐文件串行下载（最多重试 5 次）
+        // 5. 逐文件串行下载（最多重试 10 次）
         for filename in pending {
             NSLog("⬇️ 开始: \(filename)")
 
             var lastError: Error?
-            for attempt in 1...5 {
+            for attempt in 1...10 {
                 do {
                     let bytes = try await downloadFile(
                         filename: filename,

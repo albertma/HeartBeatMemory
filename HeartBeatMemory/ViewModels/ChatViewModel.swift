@@ -117,6 +117,16 @@ class ChatViewModel {
         generateTask = nil
     }
 
+
+    /// 将数据保存到临时文件
+    func saveToTempFile(data: Data, identifier: String) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let ext = "jpg"
+        let fileName = "photo_\(identifier.prefix(20)).\(ext)"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        try data.write(to: fileURL)
+        return fileURL
+    }
     /// Processes and adds media attachments to the current message
     func addMedia(_ result: Result<[URL], any Error>) {
         do {
