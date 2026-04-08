@@ -6,14 +6,14 @@
 
 - 📅 **自动获取日程** - 从系统日历读取当天的日程安排
 - 📸 **照片分析** - 使用 VLM（视觉语言模型）分析照片，提取画面元素
-- 🤖 **AI 回忆生成** - 结合照片和日程，用 LLM 生成温暖的回忆日记
+- 🤖 **AI 回忆生成** - 结合照片和日程，用 VLM 生成温暖的回忆日记
 - 🏷️ **智能分类** - 自动识别心情(mood)和分类(category)
 - 💾 **本地存储** - 使用 UserDefaults 本地保存
 
 ## 技术栈
 
 - **SwiftUI** - UI 框架
-- **MLX** - 苹果机器学习框架（本地LLM + VLM）
+- **MLX** - 苹果机器学习框架（本地VLM）
 - **PhotosUI** - 照片库访问
 - **EventKit** - 日历访问
 
@@ -59,7 +59,7 @@ Travel | Family | Work | Friends | Hobby | Food | Milestone | Daily | Other
 ## 依赖
 
 通过 Swift Package Manager 安装：
-- **MLXLMCommon** - 本地 LLM + VLM 推理
+- **MLXLMCommon** - 本地 VLM 推理
 
 ## License
 
