@@ -362,6 +362,23 @@ class MLXService {
     /// - Returns: 异步 Token 生成流
     func generate(messages: [Message], model: LMModel) async throws -> AsyncStream<Generation> {
 
+        // 检查是否在后台
+        if !isAppInForeground {
+            NSLog("⚠️ 应用在后台，等待回到前台...")
+            // 等待回到前台（最多等 30 秒）
+            for _ in 0..<30 {
+                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 秒
+                if isAppInForeground {
+                    NSLog("✅ 应用已回到前台，开始生成")
+                    break
+                }
+            }
+            
+            if !isAppInForeground {
+                throw MLXError.appInBackground
+            }
+        }
+
         NSLog("generate() 使用模型: \(model.name)")
         let modelContainer = try await load(model: model)
 
@@ -387,7 +404,7 @@ class MLXService {
                 processing: processing
             )
             let lmInput = try await context.processor.prepare(input: userInput)
-            let parameters = GenerateParameters(temperature: 1.0)
+            let parameters = GenerateParameters(maxTokens:128, temperature: 0.2, topP: 0.4, repetitionPenalty: 1.05)
             return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }

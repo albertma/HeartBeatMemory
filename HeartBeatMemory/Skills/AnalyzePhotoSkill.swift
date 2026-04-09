@@ -3,6 +3,7 @@ import Photos
 import CoreLocation
 import UIKit
 import MLXLMCommon
+import MapKit
 
 /// 照片分析 Skill - 使用 MLX VLM 分析照片
 final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
@@ -88,21 +89,15 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
         
         // 构建 prompt
         let prompt = """
-        请仔细观察这张照片，提取3-5个能够描述画面内容的关键词。
-        
-        要求：
-        1. 语言：简体中文
-        2. 内容：包含场景、物体、动作、氛围
-        3. 格式：仅返回关键词，用逗号分隔
-        
-        示例输出：
-        海滩, 夕阳, 温馨
+        观察图片，提取3-5个关键词。
+        必须包含：场景、物体、动作、氛围。
+        仅输出关键词，用逗号分隔，无其他文字。
         """
         
         // 创建消息
         let systemMessage = Message(
             role: .system,
-            content: "你是一个精准的视觉分析助手。"
+            content: "你只输出图片关键词，不解释，不造句，不输出多余内容。"
         )
         let userMessage = Message(role: .user, content: prompt, images: [tempURL])
         
@@ -184,6 +179,80 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     }
     
     private func reverseGeocode(latitude: Double, longitude: Double) async -> String {
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        
+        // 尝试 MapKit（加大搜索范围和重试）
+        for radius in [2000.0, 5000.0, 10000.0] {
+            if let result = await searchWithMapKit(coordinate: coordinate, radius: radius) {
+                return result
+            }
+        }
+        
+        // Fallback: CLGeocoder
+        return await reverseGeocodeFallback(latitude: latitude, longitude: longitude)
+    }
+    
+    private func searchWithMapKit(coordinate: CLLocationCoordinate2D, radius: Double) async -> String? {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "地点"
+        request.region = MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: radius,
+            longitudinalMeters: radius
+        )
+        
+        do {
+            let search = MKLocalSearch(request: request)
+            let response = try await search.start()
+            
+            if let item = response.mapItems.first {
+                var components: [String] = []
+                
+                // POI 名称
+                if let name = item.name, !name.isEmpty {
+                    components.append(name)
+                }
+                
+                // 使用 MKPlacemark 的详细字段（中国地址格式）
+                let placemark = item.placemark
+                
+                // 省级
+                if let administrativeArea = placemark.administrativeArea {
+                    components.append(administrativeArea)
+                }
+                
+                // 城市
+                if let locality = placemark.locality {
+                    if !components.contains(locality) {
+                        components.append(locality)
+                    }
+                }
+                
+                // 区/县
+                if let subLocality = placemark.subLocality {
+                    components.append(subLocality)
+                }
+                
+                // 街道
+                if let thoroughfare = placemark.thoroughfare {
+                    components.append(thoroughfare)
+                }
+                
+                // 门牌号
+                if let subThoroughfare = placemark.subThoroughfare {
+                    components.append(subThoroughfare)
+                }
+                
+                return components.isEmpty ? nil : components.joined(separator: "")
+            }
+        } catch {
+            print("AnalyzePhotoSkill: MKLocalSearch failed (radius=\(radius)) - \(error)")
+        }
+        
+        return nil
+    }
+    
+    private func reverseGeocodeFallback(latitude: Double, longitude: Double) async -> String {
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let geocoder = CLGeocoder()
         
@@ -193,24 +262,40 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             if let placemark = placemarks.first {
                 var components: [String] = []
                 
-                if let name = placemark.name {
-                    components.append(name)
+                // 中国地址格式：省 -> 市 -> 区 -> 街道
+                if let administrativeArea = placemark.administrativeArea {  // 省/州
+                    components.append(administrativeArea)
                 }
-                if let thoroughfare = placemark.thoroughfare {
+                if let locality = placemark.locality {  // 城市
+                    if !components.contains(locality) {
+                        components.append(locality)
+                    }
+                }
+                if let subLocality = placemark.subLocality {  // 区/县
+                    components.append(subLocality)
+                }
+                if let thoroughfare = placemark.thoroughfare {  // 街道
                     components.append(thoroughfare)
                 }
-                if let locality = placemark.locality {
-                    components.append(locality)
-                }
-                if let country = placemark.country {
-                    components.append(country)
+                if let subThoroughfare = placemark.subThoroughfare {  // 门牌号
+                    components.append(subThoroughfare)
                 }
                 
-                return components.isEmpty ? "未知地点" : components.joined(separator: " ")
+                if components.isEmpty {
+                    return formatCoordinate(CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+                }
+                return components.joined(separator: "")
             }
         } catch {
-            print("AnalyzePhotoSkill: Geocode failed")
+            print("AnalyzePhotoSkill: CLGeocoder failed - \(error)")
         }
-        return "未知地点"
+        
+        return formatCoordinate(CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+    }
+    
+    private func formatCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
+        let latDir = coordinate.latitude >= 0 ? "N" : "S"
+        let lonDir = coordinate.longitude >= 0 ? "E" : "W"
+        return String(format: "%.4f°%@ %.4f°%@", abs(coordinate.latitude), latDir, abs(coordinate.longitude), lonDir)
     }
 }

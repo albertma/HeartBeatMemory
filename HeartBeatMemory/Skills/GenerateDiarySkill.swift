@@ -82,36 +82,31 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         
         if !locations.isEmpty {
             let locNames = locations.prefix(3).compactMap { $0.name }.joined(separator: "、")
-            context += "📍 位置：\(locNames)\n"
+            context += "位置：\(locNames)\n"
         }
         if !events.isEmpty {
             let eventTitles = events.prefix(3).map { $0.title }.joined(separator: "、")
-            context += "📅 日程：\(eventTitles)\n"
+            context += "日程：\(eventTitles)\n"
         }
         if !photoKeywords.isEmpty {
             let keywords = photoKeywords.prefix(8).joined(separator: "、")
-            context += "🏷️ 画面：\(keywords)\n"
+            context += "画面：\(keywords)\n"
         }
         
         let prompt = """
-        今天是 \(dateString)。请结合图片和下方信息，写一篇温暖的回忆日记。
-        
-        ### 背景信息：
-        \(context)
-        
-        ### 要求：
-        1. 视觉优先：第一人称，描述画面中的光影、人物表情和动作或氛围
-        2. 自然治愈的语气，60-100 字
-        3. 直接返回JSON字符串
-        
-        ### 返回JSON格式：
-        {"title":"标题","summary":"正文","mood":"心情","category":"分类","tags":["标签"]}
-        
-        可选心情：开心、平静、激动、治愈、怀念、平常
-        可选分类：旅行、美食、日常、聚会、工作、其他
+        严格按照以下要求生成，只输出JSON，不输出任何其他内容。
+
+        任务：根据背景关键词写一篇治愈系日记，第一人称，视觉优先，描写光影、氛围、动作，100字内。
+
+        背景关键词：\(context)
+
+        输出JSON格式：
+        {"title":"标题","summary":"日记正文","mood":"从开心/平静/激动/治愈/怀念/平常选一个","category":"从旅行/美食/日常/聚会/工作/其他选一个","tags":["标签1","标签2"]}
+
+        只输出JSON，禁止多余文字
         """
         
-        let systemMsg = Message(role: .system, content: "你是一个温暖的生活记录助手。")
+        let systemMsg = Message(role: .system, content: "你只输出标准JSON。不写文字，不解释，不闲聊")
         let userMsg = Message(role: .user, content: prompt)
         NSLog("systemMsg: \(systemMsg.content)")
         NSLog("userMsg: \(userMsg.content)")
@@ -130,6 +125,23 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         NSLog("response content: \(response)")
         var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // 尝试先解析标准 JSON 格式
+        if let parsed = try? parseJsonFormat(cleaned) {
+            return parsed
+        }
+        
+        // 尝试解析类 Markdown 格式
+        if let parsed = try? parseMarkdownFormat(cleaned) {
+            return parsed
+        }
+        
+        // 都失败则抛出异常
+        throw SkillError.executionFailed("无法解析日记")
+    }
+    
+    private func parseJsonFormat(_ response: String) throws -> ParsedDiary {
+        var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         // 提取 JSON
         if let start = cleaned.firstIndex(of: "{"),
            let end = cleaned.lastIndex(of: "}") {
@@ -145,16 +157,67 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         
         guard let data = cleaned.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw SkillError.executionFailed("无法解析日记")
+            throw SkillError.executionFailed("非JSON格式")
         }
         
+        return extractFields(from: json, originalResponse: cleaned)
+    }
+    
+    private func parseMarkdownFormat(_ response: String) throws -> ParsedDiary {
+        var title = "这一天"
+        var summary = response
+        var moodStr = "平常"
+        var categoryStr = "日常"
+        var tags: [String] = []
+        
+        let lines = response.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if trimmed.hasPrefix("标题:") {
+                title = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("摘要:") {
+                summary = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("正文:") {
+                summary = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("心情:") {
+                moodStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("分类:") {
+                categoryStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("标签:") {
+                let tagStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                // 支持逗号分隔的多个标签
+                tags = tagStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
+                    + tagStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            }
+        }
+        
+        guard title != "这一天" || !summary.isEmpty else {
+            throw SkillError.executionFailed("非Markdown格式")
+        }
+        
+        let json: [String: Any] = [
+            "title": title,
+            "summary": summary,
+            "mood": moodStr,
+            "category": categoryStr,
+            "tags": tags
+        ]
+        return extractFields(from: json, originalResponse: response)
+    }
+    
+    private func extractFields(from json: [String: Any], originalResponse: String) -> ParsedDiary {
         let title = json["title"] as? String ?? "这一天"
-        let summary = json["summary"] as? String ?? response
+        let summary = json["summary"] as? String ?? originalResponse
         let moodStr = json["mood"] as? String ?? "平常"
         let categoryStr = json["category"] as? String ?? "日常"
         let tags = json["tags"] as? [String] ?? []
         
-        let mood = Mood.allCases.first { $0.rawValue == moodStr } ?? .neutral
+        // 处理多值心情（用顿号或逗号分隔）
+        let moods = moodStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
+            + moodStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let mood = Mood.allCases.first { moods.contains($0.rawValue) } ?? .neutral
+        
         let category = Category.allCases.first { $0.rawValue == categoryStr } ?? .other
         
         return ParsedDiary(title: title, summary: summary, mood: mood, category: category, tags: tags)
