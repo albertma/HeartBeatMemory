@@ -4,8 +4,8 @@ import CoreLocation
 import UIKit
 import MLXLMCommon
 
-/// 照片分析 Skill
-final class AnalyzePhotoSkill: Skill {
+/// 照片分析 Skill - 使用 MLX VLM 分析照片
+final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     let id = "analyze_photo"
     let name = "Analyze Photo"
     let description = "VLM 分析照片，提取关键词、位置"
@@ -58,7 +58,7 @@ final class AnalyzePhotoSkill: Skill {
                 locations: allLocations,
                 elements: Array(uniqueElements)
             )),
-            metadata: ["photosAnalyzed": context.photos.count, "timestamp": Date()]
+            metadata: ["photosAnalyzed": context.photos.count]
         )
     }
     
@@ -68,17 +68,76 @@ final class AnalyzePhotoSkill: Skill {
     }
     
     private func analyzePhoto(_ photo: PhotoData) async -> PhotoAnalysisResult? {
-        guard visionModel != nil, 
-              let image = await loadImage(from: photo),
-              let tempURL = saveTempImage(image: image, identifier: photo.identifier) else {
+        guard let model = visionModel else {
+            print("AnalyzePhotoSkill: No VLM model available")
+            return nil
+        }
+        
+        // 加载图片
+        guard let image = await loadImage(from: photo) else {
+            return nil
+        }
+        
+        // 保存临时图片
+        guard let tempURL = saveTempImage(image: image, identifier: photo.identifier) else {
             return nil
         }
         
         let fileManager = FileManager.default
         defer { try? fileManager.removeItem(at: tempURL) }
         
-        // 调用 VLM 分析
-        return PhotoAnalysisResult(keywords: [], elements: [])
+        // 构建 prompt
+        let prompt = """
+        请仔细观察这张照片，提取3-5个能够描述画面内容的关键词。
+        
+        要求：
+        1. 语言：简体中文
+        2. 内容：包含场景、物体、动作、氛围
+        3. 格式：仅返回关键词，用逗号分隔
+        
+        示例输出：
+        海滩, 夕阳, 温馨
+        """
+        
+        // 创建消息
+        let systemMessage = Message(
+            role: .system,
+            content: "你是一个精准的视觉分析助手。"
+        )
+        let userMessage = Message(role: .user, content: prompt, images: [tempURL])
+        
+        // 调用 MLX（自动下载并加载模型）
+        var fullResponse = ""
+        do {
+            let stream = try await mlxService.generate(messages: [systemMessage, userMessage], model: model)
+            for try await token in stream {
+                fullResponse += token.chunk ?? ""
+            }
+        } catch {
+            print("AnalyzePhotoSkill: MLX generate failed - \(error)")
+        }
+        
+        // 解析关键词
+        let keywords = parseKeywords(from: fullResponse)
+        let elements = keywords
+        
+        return PhotoAnalysisResult(keywords: keywords, elements: elements)
+    }
+    
+    private func parseKeywords(from response: String) -> [String] {
+        var cleaned = response
+            .replacingOccurrences(of: "关键词：", with: "")
+            .replacingOccurrences(of: "Keywords:", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let separators = CharacterSet(charactersIn: ",，\n")
+        let rawKeywords = cleaned.components(separatedBy: separators)
+        
+        return rawKeywords.compactMap { keyword -> String? in
+            let k = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+            return k.isEmpty ? nil : k
+        }.prefix(5).map { $0 }
     }
     
     private func loadImage(from photo: PhotoData) async -> UIImage? {
@@ -130,10 +189,15 @@ final class AnalyzePhotoSkill: Skill {
         
         do {
             let placemarks = try await geocoder.reverseGeocodeLocation(location)
+            
             if let placemark = placemarks.first {
                 var components: [String] = []
-                if let area = placemark.areasOfInterest?.first {
-                    components.append(area)
+                
+                if let name = placemark.name {
+                    components.append(name)
+                }
+                if let thoroughfare = placemark.thoroughfare {
+                    components.append(thoroughfare)
                 }
                 if let locality = placemark.locality {
                     components.append(locality)
@@ -141,6 +205,7 @@ final class AnalyzePhotoSkill: Skill {
                 if let country = placemark.country {
                     components.append(country)
                 }
+                
                 return components.isEmpty ? "未知地点" : components.joined(separator: " ")
             }
         } catch {

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Skill 基础协议
-protocol Skill: Identifiable, Sendable {
+protocol Skill: Identifiable {
     var id: String { get }
     var name: String { get }
     var description: String { get }
@@ -37,28 +37,30 @@ struct SkillContext: Sendable {
 struct SkillResult: Sendable {
     let skillId: String
     let data: SkillData
-    let metadata: [String: Any]?
+    let metadata: [String: Sendable?]
     
     enum SkillData: Sendable {
         case keywords([String])
         case diary(DiaryContent)
         case analysis(PhotoAnalysis)
-        case custom(Any)
+        case custom(String)
     }
-    
-    struct DiaryContent: Sendable {
-        let title: String
-        let summary: String
-        let mood: Mood
-        let category: Category
-        let tags: [String]
-    }
-    
-    struct PhotoAnalysis: Sendable {
-        let keywords: [String]
-        let locations: [LocationData]
-        let elements: [String]
-    }
+}
+
+/// 日记内容
+struct DiaryContent: Sendable {
+    let title: String
+    let summary: String
+    let mood: Mood
+    let category: Category
+    let tags: [String]
+}
+
+/// 照片分析结果
+struct PhotoAnalysis: Sendable {
+    let keywords: [String]
+    let locations: [LocationData]
+    let elements: [String]
 }
 
 /// Skill 错误

@@ -1,6 +1,6 @@
 import Foundation
-
-/// Skill 管理器
+import Combine
+/// Skill 管理器 - 使用 Skills 架构执行 AI 任务
 @MainActor
 class SkillManager: ObservableObject {
     static let shared = SkillManager()
@@ -24,6 +24,7 @@ class SkillManager: ObservableObject {
             AnalyzePhotoSkill(),
             GenerateDiarySkill()
         ]
+        NSLog("SkillManager: Registered \(skills.count) skills")
     }
     
     func register(_ skill: any Skill) {
@@ -35,7 +36,9 @@ class SkillManager: ObservableObject {
         guard let skill = skills.first(where: { $0.id == skillId }) else {
             throw SkillError.notFound(skillId)
         }
+        
         executionStatus[skillId] = .running
+        
         do {
             let result = try await skill.execute(with: context)
             executionStatus[skillId] = .success
@@ -54,6 +57,7 @@ class SkillManager: ObservableObject {
             let result = try await execute(skillId, with: currentContext)
             results.append(result)
             
+            // 将前一个 skill 的结果传递给下一个 skill
             switch result.data {
             case .analysis(let analysis):
                 currentContext = SkillContext(
@@ -61,12 +65,29 @@ class SkillManager: ObservableObject {
                     events: context.events,
                     photos: context.photos,
                     locations: context.locations,
-                    userPreferences: ["keywords": analysis.keywords]
+                    userPreferences: ["keywords": analysis.keywords, "locations": analysis.locations]
                 )
+            case .diary(let diary):
+                // 日记生成后不再传递
+                break
             default:
                 break
             }
         }
+        
         return results
+    }
+    
+    /// 获取所有可用 Skill ID
+    func availableSkillIDs() -> [String] {
+        skills.map { $0.id }
+    }
+    
+    /// 获取 Skill 信息
+    func skillInfo(_ skillId: String) -> (name: String, description: String)? {
+        guard let skill = skills.first(where: { $0.id == skillId }) else {
+            return nil
+        }
+        return (skill.name, skill.description)
     }
 }

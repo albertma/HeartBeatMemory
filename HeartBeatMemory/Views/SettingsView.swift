@@ -57,6 +57,19 @@ struct SettingsView: View {
                             }
                         }
 
+                        // 模型管理页面
+                        NavigationLink {
+                            ModelDownloadView()
+                        } label: {
+                            HStack {
+                                Label("管理模型", systemImage: "square.stack.3d.down")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
                         // Download Progress
                         if let progress = mlxService.modelDownloadProgress, !progress.isFinished {
                             ModelDownloadProgressView(progress: progress)

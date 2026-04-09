@@ -9,10 +9,8 @@ import UIKit
 // MARK: - LMModel 扩展：所有模型必须使用 mlx-community 下的公开 repo
 
 extension ModelConfiguration {
-    
-//    
     static let qwen2VL_2b     = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
-//    static let gemma3n_e2b     = ModelConfiguration(id: "mlx-community/gemma-3n-E2B-4bit")
+   // static let gemma3_4b    = ModelConfiguration(id: "mlx-community/gemma-3-4b-it-qat-4bit")
 }
 
 // MARK: - MLXService
@@ -25,6 +23,7 @@ class MLXService {
     // ✅ 全部使用 mlx-community repo，保证 hf-mirror.com 可公开访问（无需登录）
     static let availableModels: [LMModel] = [
         LMModel(name: "qwen2VL:2b",   configuration: .qwen2VL_2b,   type: .vlm),
+//        LMModel(name: "gemma3-4b",   configuration: .gemma3_4b,   type: .vlm),
     ]
 
     // MARK: - App 状态检查（防止后台 GPU 调用）
@@ -71,27 +70,32 @@ class MLXService {
     }
 
     // MARK: - 模型存在性检查
-
-    /// 检查模型文件是否完整下载（必须有 config.json，否则视为未完成）
-    /// 只检查目录存在是不够的——目录可能是上次下载失败的残留
+    /// 检查模型是否已下载（使用元数据判断）
     func isModelDownloaded(_ model: LMModel) -> Bool {
         if modelCache.object(forKey: model.name as NSString) != nil { return true }
 
-        // config.json 是每个模型必须有的文件，以它作为下载完成的标志
-        let requiredFile = "config.json"
-
-        for hubApi in [persistentHubApi, downloadHubApi] {
-            let dir = hubApi.localRepoLocation(repo(for: model.configuration))
-            let configPath = dir.appendingPathComponent(requiredFile).path
-            if FileManager.default.fileExists(atPath: configPath) {
-                NSLog("isModelDownloaded(\(model.name)): true (\(dir.path))")
+        // 1. 使用元数据判断
+        let repoId = model.configuration.name
+        if let metadata = DownloadMetadataManager.shared.loadMetadata(for: repoId) {
+            if !metadata.completedFiles.isEmpty && metadata.pendingFiles.isEmpty {
                 return true
             }
         }
 
-        NSLog("isModelDownloaded(\(model.name)): false")
+        // 2. 兼容：检查目录
+        for hubApi in [persistentHubApi, downloadHubApi] {
+            let dir = hubApi.localRepoLocation(repo(for: model.configuration))
+            if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path), !files.isEmpty {
+                return true
+            }
+        }
+
         return false
     }
+
+
+    /// 检查模型文件是否完整下载（必须有 config.json，否则视为未完成）
+    /// 只检查目录存在是不够的——目录可能是上次下载失败的残留
 
     /// 检查模型是否已下载（接受模型名称字符串，供 View 直接调用）
     func isModelDownloaded(_ modelName: String) -> Bool {
@@ -298,11 +302,11 @@ class MLXService {
         }
     }
 
-    /// 启动 ResumableModelDownloader，下载到 Caches 目录
+    /// 启动 ResumableModelDownloader，下载到 Caches 目录（iOS 过滤 + 元数据）
     private func runResumableDownload(model: LMModel) async throws {
-        // 下载目标：Caches（Hub 库在此路径能正常工作）
         let destDir = downloadHubApi.localRepoLocation(repo(for: model.configuration))
-        let downloader = ResumableModelDownloader(
+        
+        let downloader = ResumableModelDownloader.iOSDownloader(
             repoId: model.configuration.name,
             mirrorBase: "https://hf-mirror.com",
             destinationDir: destDir
@@ -311,7 +315,7 @@ class MLXService {
         let progress = Progress(totalUnitCount: 100)
         await MainActor.run { self.modelDownloadProgress = progress }
 
-        _ = try await downloader.download { downloaded, total, filesDone, filesTotal in
+        _ = try await downloader.download(modelName: model.name) { downloaded, total, filesDone, filesTotal in
             Task { @MainActor in
                 if total > 0 {
                     progress.totalUnitCount = total
@@ -357,11 +361,6 @@ class MLXService {
     ///   - model: 使用的模型
     /// - Returns: 异步 Token 生成流
     func generate(messages: [Message], model: LMModel) async throws -> AsyncStream<Generation> {
-        // 检查 app 是否在前台
-        guard isAppInForeground else {
-            NSLog("🚫 generate() 被拒绝：App 不在 active 状态")
-            throw MLXError.appInBackground
-        }
 
         NSLog("generate() 使用模型: \(model.name)")
         let modelContainer = try await load(model: model)
@@ -388,7 +387,7 @@ class MLXService {
                 processing: processing
             )
             let lmInput = try await context.processor.prepare(input: userInput)
-            let parameters = GenerateParameters(temperature: 0.9)
+            let parameters = GenerateParameters(temperature: 1.0)
             return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }

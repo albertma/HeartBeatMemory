@@ -86,7 +86,7 @@ class AppState: ObservableObject {
             await MainActor.run {
                 isProcessing = false
             }
-            print("Error generating memory: \(error)")
+            NSLog("Error generating memory: \(error)")
         }
     }
     

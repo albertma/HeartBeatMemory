@@ -35,6 +35,7 @@
 		5308794C2F5EA30B004E4E27 /* HeartBeatMemoryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HeartBeatMemoryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		530879562F5EA30B004E4E27 /* HeartBeatMemoryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HeartBeatMemoryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5360FD292F85E91E0013E0D7 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		5360FD622F8680910013E0D7 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -100,6 +101,7 @@
 		530879322F5EA309004E4E27 = {
 			isa = PBXGroup;
 			children = (
+				5360FD622F8680910013E0D7 /* Package.swift */,
 				5360FD292F85E91E0013E0D7 /* README.md */,
 				5308793D2F5EA309004E4E27 /* HeartBeatMemory */,
 				5308794F2F5EA30B004E4E27 /* HeartBeatMemoryTests */,

@@ -1,8 +1,8 @@
 import Foundation
 import MLXLMCommon
 
-/// 日记生成 Skill
-final class GenerateDiarySkill: Skill {
+/// 日记生成 Skill - 使用 MLX LLM 生成日记
+final class GenerateDiarySkill: Skill, @unchecked Sendable {
     let id = "generate_diary"
     let name = "Generate Diary"
     let description = "基于上下文生成温暖的回忆日记"
@@ -13,6 +13,7 @@ final class GenerateDiarySkill: Skill {
         var photoKeywords: [String] = []
         var allLocations = context.locations
         
+        // 从上下文提取关键词
         if let prefs = context.userPreferences {
             if let keywords = prefs["keywords"] as? [String] {
                 photoKeywords = keywords
@@ -22,15 +23,31 @@ final class GenerateDiarySkill: Skill {
             }
         }
         
-        let (systemMessage, userMessage) = buildPrompt(
+        let messages = buildMessages(
             date: context.date,
             events: context.events,
             photoKeywords: photoKeywords,
             locations: allLocations
         )
         
-        let response = try await callLLM(messages: [systemMessage, userMessage])
-        let diary = try parseDiaryResponse(response, date: context.date)
+        // 获取 LLM 模型
+        let modelName = UserDefaults.standard.string(forKey: "MLXModelName") 
+            ?? MLXService.availableModels.first(where: { $0.type == .llm })?.name 
+            ?? "qwen2VL:2b"
+        NSLog("GenerateDiarySkill Try to check LLM model: \(modelName)")
+        guard let model = MLXService.availableModels.first(where: { $0.name == modelName }) else {
+            throw SkillError.executionFailed("LLM model not found")
+        }
+        
+        // 调用 MLX（自动下载并加载模型）
+        var fullResponse = ""
+        let stream = try await mlxService.generate(messages: [messages.system, messages.user], model: model)
+        
+        for try await token in stream {
+            fullResponse += token.chunk ?? ""
+        }
+        
+        let diary = try parseDiaryResponse(fullResponse, date: context.date)
         
         return SkillResult(
             skillId: id,
@@ -41,21 +58,22 @@ final class GenerateDiarySkill: Skill {
                 category: diary.category,
                 tags: diary.tags
             )),
-            metadata: ["date": context.date, "keywords": photoKeywords, "timestamp": Date()]
+            metadata: ["date": context.date, "keywords": photoKeywords]
         )
     }
     
-    private struct PromptMessages {
+    private struct Messages {
         let system: Message
         let user: Message
     }
     
-    private func buildPrompt(
+    private func buildMessages(
         date: Date,
         events: [EventData],
         photoKeywords: [String],
         locations: [LocationData]
-    ) -> PromptMessages {
+    ) -> Messages {
+        NSLog("GenerateDiarySkill Trying to build prompt")
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy年MM月dd日"
         let dateString = formatter.string(from: date)
@@ -78,15 +96,15 @@ final class GenerateDiarySkill: Skill {
         let prompt = """
         今天是 \(dateString)。请结合图片和下方信息，写一篇温暖的回忆日记。
         
-        ### 信息：
+        ### 背景信息：
         \(context)
         
         ### 要求：
-        1. 视觉优先：第一人称，描述画面中的光影、人物表情、动作或氛围
+        1. 视觉优先：第一人称，描述画面中的光影、人物表情和动作或氛围
         2. 自然治愈的语气，60-100 字
-        3. 直接返回 JSON，不要 markdown
+        3. 直接返回JSON字符串
         
-        ### JSON 格式：
+        ### 返回JSON格式：
         {"title":"标题","summary":"正文","mood":"心情","category":"分类","tags":["标签"]}
         
         可选心情：开心、平静、激动、治愈、怀念、平常
@@ -95,27 +113,9 @@ final class GenerateDiarySkill: Skill {
         
         let systemMsg = Message(role: .system, content: "你是一个温暖的生活记录助手。")
         let userMsg = Message(role: .user, content: prompt)
-        
-        return PromptMessages(system: systemMsg, user: userMsg)
-    }
-    
-    private func callLLM(messages: [Message]) async throws -> String {
-        let modelName = UserDefaults.standard.string(forKey: "MLXModelName") 
-            ?? MLXService.availableModels.first(where: { $0.type == .llm })?.name 
-            ?? "qwen3:1.7b"
-        
-        guard let model = MLXService.availableModels.first(where: { $0.name == modelName }) else {
-            throw SkillError.executionFailed("LLM model not found")
-        }
-        
-        var fullResponse = ""
-        let stream = try await mlxService.generate(messages: messages, model: model)
-        
-        for try await token in stream {
-            fullResponse += token.chunk ?? ""
-        }
-        
-        return fullResponse
+        NSLog("systemMsg: \(systemMsg.content)")
+        NSLog("userMsg: \(userMsg.content)")
+        return Messages(system: systemMsg, user: userMsg)
     }
     
     private struct ParsedDiary {
@@ -127,8 +127,10 @@ final class GenerateDiarySkill: Skill {
     }
     
     private func parseDiaryResponse(_ response: String, date: Date) throws -> ParsedDiary {
+        NSLog("response content: \(response)")
         var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // 提取 JSON
         if let start = cleaned.firstIndex(of: "{"),
            let end = cleaned.lastIndex(of: "}") {
             if start < end {
