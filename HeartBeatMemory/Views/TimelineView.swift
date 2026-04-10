@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import SwiftData
 import PhotosUI
 
 struct TimelineView: View {
@@ -122,7 +124,7 @@ struct MemoryCard: View {
                 VStack(alignment: .leading) {
                     Text(hbMemory.title)
                         .font(.headline)
-                    Text(hbMemory.date, style: .date)
+                    Text(formatDate(hbMemory.date))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -175,6 +177,12 @@ struct MemoryCard: View {
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
 }
 
 struct FlowLayout: Layout {
@@ -226,6 +234,12 @@ struct FlowLayout: Layout {
 struct MemoryDetailView: View {
     let memory: HeartBeatMemory
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.modelContext) private var modelContext
+    @State private var showDeleteAlert = false
+    @State private var showShareSheet = false
+    @State private var capturedImage: UIImage? = nil
+    @State private var isCapturing = false
     
     var body: some View {
         NavigationStack {
@@ -256,17 +270,102 @@ struct MemoryDetailView: View {
                     if !memory.aiTags.isEmpty {
                         tagsSection
                     }
+                    
+                    // App Branding
+                    appBrandingSection
                 }
                 .padding()
             }
             .navigationTitle("回忆详情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(role: .destructive) {
+                        showDeleteAlert = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button {
+                        captureAndShare()
+                    } label: {
+                        if isCapturing {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    .disabled(isCapturing)
+                }
+            }
+            .alert("删除回忆", isPresented: $showDeleteAlert) {
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) {
+                    deleteMemory()
+                }
+            } message: {
+                Text("确定要删除这条回忆吗？此操作无法撤销。")
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let image = capturedImage {
+                    ShareSheet(items: [image])
                 }
             }
         }
+    }
+    
+    // MARK: - Delete Action
+    
+    private func deleteMemory() {
+        appState.deleteMemory(memory)
+        dismiss()
+    }
+    
+    // MARK: - Capture & Share
+    
+    private func captureAndShare() {
+        isCapturing = true
+        
+        // 延迟一下确保视图渲染完成
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.captureScreenshot()
+            self.isCapturing = false
+            self.showShareSheet = true
+        }
+    }
+    
+    private func captureScreenshot() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else { return }
+        
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        capturedImage = renderer.image { context in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+    }
+    
+    // MARK: - App Branding Section
+    
+    private var appBrandingSection: some View {
+        VStack(spacing: 8) {
+            Divider()
+            
+            Text("来自心跳回忆")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Text("用 AI 记录生活中的温暖瞬间")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            
+            Link(destination: URL(string: "https://apps.apple.com/app/idXXXXXXXXX")!) {
+                Text("心跳回忆 - App Store")
+                    .font(.caption2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
     }
     
     // MARK: - Header Section
@@ -280,7 +379,7 @@ struct MemoryDetailView: View {
                     Text(memory.title)
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text(memory.date, style: .date)
+                    Text(formatDate(memory.date))
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -407,9 +506,14 @@ struct MemoryDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
     }
-}
+            // MARK: - Date Formatting
 
-// MARK: - Supporting Views
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+}
 
 struct PhotoThumbnail: View {
     let photo: PhotoData
@@ -508,13 +612,14 @@ struct EventRow: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
+        formatter.dateStyle = .medium
         return formatter.string(from: date)
     }
     
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
         return formatter.string(from: date)
     }
 }
@@ -546,3 +651,15 @@ struct LocationRow: View {
     }
 }
 
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
