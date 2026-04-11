@@ -1,5 +1,6 @@
 import SwiftUI
 import MLXLMCommon
+import CoreData
 
 // 全局 MLXService 实例,确保 UI 能响应状态变化
 @Observable
@@ -70,72 +71,72 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Download Progress
-                        if let progress = mlxService.modelDownloadProgress, !progress.isFinished {
-                            ModelDownloadProgressView(progress: progress)
-                        }
+//                        // Download Progress
+//                        if let progress = mlxService.modelDownloadProgress, !progress.isFinished {
+//                            ModelDownloadProgressView(progress: progress)
+//                        }
 
                         // Downloaded Models List
-                        let downloadedModels = mlxService.getDownloadedModels()
-                        if !downloadedModels.isEmpty {
-                            NavigationLink {
-                                DownloadedModelsView(
-                                    selectedModelName: $selectedModelName
-                                )
-                            } label: {
-                                HStack {
-                                    Label("已下载模型", systemImage: "square.stack.3d.up")
-                                    Spacer()
-                                    Text("\(downloadedModels.count)个")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
+//                        let downloadedModels = mlxService.getDownloadedModels()
+//                        if !downloadedModels.isEmpty {
+//                            NavigationLink {
+//                                DownloadedModelsView(
+//                                    selectedModelName: $selectedModelName
+//                                )
+//                            } label: {
+//                                HStack {
+//                                    Label("已下载模型", systemImage: "square.stack.3d.up")
+//                                    Spacer()
+//                                    Text("\(downloadedModels.count)个")
+//                                        .foregroundColor(.secondary)
+//                                }
+//                            }
+//                        }
 
                         // Download Model Button (for models not yet downloaded)
-                        ForEach(MLXService.availableModels.filter { !mlxService.isModelDownloaded($0.name) }) { model in
-                            Button {
-                                Task {
-                                    try? await mlxService.downloadModel(model)
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "arrow.down.circle")
-                                        .foregroundColor(.blue)
-                                    Text("下载 \(model.name)")
-                                    Spacer()
-                                    if mlxService.modelDownloadProgress != nil {
-                                        ProgressView()
-                                            .scaleEffect(0.7)
-                                    }
-                                }
-                            }
-                        }
+//                        ForEach(MLXService.availableModels.filter { !mlxService.isModelDownloaded($0.name) }) { model in
+//                            Button {
+//                                Task {
+//                                    try? await mlxService.downloadModel(model)
+//                                }
+//                            } label: {
+//                                HStack {
+//                                    Image(systemName: "arrow.down.circle")
+//                                        .foregroundColor(.blue)
+//                                    Text("下载 \(model.name)")
+//                                    Spacer()
+//                                    if mlxService.modelDownloadProgress != nil {
+//                                        ProgressView()
+//                                            .scaleEffect(0.7)
+//                                    }
+//                                }
+//                            }
+//                        }
                     }
                 }
 
                 // OpenAI Section (shown when local model is disabled)
-                Section("云端AI设置") {
-                    HStack {
-                        Label("API Key", systemImage: "key")
-                        Spacer()
-                        Button("设置") {
-                            showingKeyInput = true
-                        }
-                    }
+//                Section("云端AI设置") {
+//                    HStack {
+//                        Label("API Key", systemImage: "key")
+//                        Spacer()
+//                        Button("设置") {
+//                            showingKeyInput = true
+//                        }
+//                    }
+//
+//                    Text("使用OpenAI GPT模型生成回忆")
+//                        .font(.caption)
+//                        .foregroundColor(.secondary)
+//                }
 
-                    Text("使用OpenAI GPT模型生成回忆")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Section("生成设置") {
-                    Toggle("自动生成每日回忆", isOn: $autoGenerate)
-
-                    if autoGenerate {
-                        DatePicker("生成时间", selection: $generateTime, displayedComponents: .hourAndMinute)
-                    }
-                }
+//                Section("生成设置") {
+//                    Toggle("自动生成每日回忆", isOn: $autoGenerate)
+//
+//                    if autoGenerate {
+//                        DatePicker("生成时间", selection: $generateTime, displayedComponents: .hourAndMinute)
+//                    }
+//                }
 
                 Section("数据权限") {
                     NavigationLink("管理访问权限") {
@@ -593,5 +594,5 @@ struct DownloadedModelsView: View {
 
 #Preview {
     SettingsView()
-        .environmentObject(AppState())
+        .environmentObject(AppState(viewContext: PersistenceController.preview.container.viewContext))
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreData
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
@@ -46,5 +47,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(AppState())
+        .environmentObject(AppState(viewContext: PersistenceController.preview.container.viewContext))
 }

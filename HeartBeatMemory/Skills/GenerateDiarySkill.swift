@@ -80,6 +80,10 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         
         var context = ""
         
+        if !photoKeywords.isEmpty {
+            let keywords = photoKeywords.prefix(8).joined(separator: "、")
+            context += "画面：\(keywords)\n"
+        }
         if !locations.isEmpty {
             let locNames = locations.prefix(3).compactMap { $0.name }.joined(separator: "、")
             context += "位置：\(locNames)\n"
@@ -88,10 +92,7 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             let eventTitles = events.prefix(3).map { $0.title }.joined(separator: "、")
             context += "日程：\(eventTitles)\n"
         }
-        if !photoKeywords.isEmpty {
-            let keywords = photoKeywords.prefix(8).joined(separator: "、")
-            context += "画面：\(keywords)\n"
-        }
+        
         
         let prompt = """
         严格按照以下要求生成，只输出JSON，不输出任何其他内容。

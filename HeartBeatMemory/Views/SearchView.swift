@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreData
 
 struct SearchView: View {
     @EnvironmentObject var appState: AppState
@@ -101,5 +102,5 @@ struct FilterChip: View {
 
 #Preview {
     SearchView()
-        .environmentObject(AppState())
+        .environmentObject(AppState(viewContext: PersistenceController.preview.container.viewContext))
 }

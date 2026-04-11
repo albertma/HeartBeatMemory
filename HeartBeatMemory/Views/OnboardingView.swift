@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreData
 
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
@@ -110,5 +111,5 @@ struct FeatureRow: View {
 
 #Preview {
     OnboardingView()
-        .environmentObject(AppState())
+        .environmentObject(AppState(viewContext: PersistenceController.preview.container.viewContext))
 }

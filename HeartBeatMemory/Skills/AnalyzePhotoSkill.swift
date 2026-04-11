@@ -33,12 +33,14 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                         latitude: photoLoc.latitude,
                         longitude: photoLoc.longitude
                     )
+                    NSLog("Location Name: \(locationName)")
                     let namedLocation = LocationData(
                         name: locationName,
                         latitude: photoLoc.latitude,
                         longitude: photoLoc.longitude,
                         timestamp: photoLoc.timestamp
                     )
+                    NSLog("Named Location: \(namedLocation)")
                     allLocations.append(namedLocation)
                 }
             }
@@ -183,6 +185,7 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
         
         // 尝试 MapKit（加大搜索范围和重试）
         for radius in [2000.0, 5000.0, 10000.0] {
+            NSLog("Searche with MapKit")
             if let result = await searchWithMapKit(coordinate: coordinate, radius: radius) {
                 return result
             }
@@ -233,14 +236,10 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                     components.append(subLocality)
                 }
                 
-                // 街道
-                if let thoroughfare = placemark.thoroughfare {
-                    components.append(thoroughfare)
-                }
-                
-                // 门牌号
-                if let subThoroughfare = placemark.subThoroughfare {
-                    components.append(subThoroughfare)
+                if let areasOfInterest = placemark.areasOfInterest {
+                    if !areasOfInterest.isEmpty{
+                        components.append(areasOfInterest.first!.description)
+                    }
                 }
                 
                 return components.isEmpty ? nil : components.joined(separator: "")
@@ -253,6 +252,7 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     }
     
     private func reverseGeocodeFallback(latitude: Double, longitude: Double) async -> String {
+        NSLog("reverseGeocodeFallback")
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let geocoder = CLGeocoder()
         
@@ -274,13 +274,13 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                 if let subLocality = placemark.subLocality {  // 区/县
                     components.append(subLocality)
                 }
-                if let thoroughfare = placemark.thoroughfare {  // 街道
-                    components.append(thoroughfare)
-                }
-                if let subThoroughfare = placemark.subThoroughfare {  // 门牌号
-                    components.append(subThoroughfare)
-                }
                 
+                if let areasOfInterests = placemark.areasOfInterest{
+                    if !areasOfInterests.isEmpty{
+                        components.append(areasOfInterests.first!.description)
+                    }
+                }
+               
                 if components.isEmpty {
                     return formatCoordinate(CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
                 }
