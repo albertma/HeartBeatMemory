@@ -214,15 +214,31 @@ actor ResumableModelDownloader {
                 return matches && !ignored
             }
             
-            // 只返回未完成的文件
+            // 只返回未完成的文件（需要同时满足：元数据状态不是 completed，且文件真实存在）
             return filtered.filter { filename in
                 guard let record = metadata.files[filename] else { return true }
-                return record.status != .completed
+                // 元数据标记为 completed，但文件不存在，仍然需要重新下载
+                if record.status == .completed {
+                    let fileExists = fileExistsAt(filename)
+                    if !fileExists {
+                        NSLog("⚠️ 元数据显示已完成但文件不存在: \(filename)，需要重新下载")
+                        return true
+                    }
+                    return false
+                }
+                return true
             }
         }
         
         // 返回未完成文件
         return metadata.pendingFiles
+    }
+    
+    // MARK: - 检查文件是否存在
+    
+    private func fileExistsAt(_ filename: String) -> Bool {
+        let dest = destinationDir.appendingPathComponent(filename)
+        return FileManager.default.fileExists(atPath: dest.path)
     }
 
     // MARK: - 单文件下载
@@ -331,6 +347,28 @@ actor ResumableModelDownloader {
         }
         
         return (files, fileSizes)
+    }
+
+    // MARK: - 获取当前下载状态（供外部监控使用）
+    
+    func getCurrentStatus() async -> DownloadStatusDetail? {
+        guard let metadata = metadataManager.loadMetadata(for: repoId) else {
+            return nil
+        }
+        
+        let files = Array(metadata.files.values)
+        let downloadingFile = files.first(where: { $0.status == .downloading })
+        let filesDone = files.filter { $0.status == .completed }.count
+        let filesTotal = files.count
+        
+        return DownloadStatusDetail(
+            modelName: repoId,
+            currentFile: downloadingFile?.id ?? (metadata.pendingFiles.isEmpty ? "完成" : "等待中"),
+            downloadedBytes: metadata.downloadedSize,
+            totalBytes: metadata.totalSize,
+            filesDone: filesDone,
+            filesTotal: filesTotal
+        )
     }
 
     // MARK: - 错误

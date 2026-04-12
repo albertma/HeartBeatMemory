@@ -62,13 +62,11 @@ struct SettingsView: View {
                         NavigationLink {
                             ModelDownloadView()
                         } label: {
-                            HStack {
+                           
                                 Label("管理模型", systemImage: "square.stack.3d.down")
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
+                               
+                               
+                            
                         }
 
 //                        // Download Progress
@@ -168,12 +166,12 @@ struct SettingsView: View {
             .sheet(isPresented: $showingKeyInput) {
                 APIKeyInputView(key: $openAIKey)
             }
-            .sheet(isPresented: $showingModelInfo) {
-                ModelInfoView(
-                    modelName: selectedModelName,
-                    modelType: selectedModelType
-                )
-            }
+//            .sheet(isPresented: $showingModelInfo) {
+//                ModelInfoView(
+//                    modelName: selectedModelName,
+//                    modelType: selectedModelType
+//                )
+//            }
         }
     }
 
@@ -490,109 +488,3 @@ struct PermissionRow: View {
     }
 }
 
-// MARK: - Downloaded Models View
-
-struct DownloadedModelsView: View {
-    @Binding var selectedModelName: String
-    
-    // 使用 @Bindable 让 UI 响应状态变化
-    @Bindable private var sharedService = SharedMLXService.shared
-    private var mlxService: MLXService { sharedService.mlxService }
-    
-    @State private var showingDeleteAlert: Bool = false
-    @State private var modelToDelete: String?
-    @State private var showingDeleteAllAlert: Bool = false
-    
-    // 动态获取已下载模型列表
-    private var downloadedModels: [LMModel] {
-        mlxService.getDownloadedModels()
-    }
-
-    var body: some View {
-        List {
-            Section {
-                ForEach(downloadedModels) { model in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(model.name)
-                                .font(.headline)
-                            Text(model.isVisionModel ? "视觉语言模型" : "语言模型")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        Spacer()
-
-                        if model.name == selectedModelName {
-                            Text("使用中")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
-                        }
-
-                        Button(role: .destructive) {
-                            modelToDelete = model.name
-                            showingDeleteAlert = true
-                        } label: {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.vertical, 4)
-                }
-            } header: {
-                Text("已下载模型 (\(downloadedModels.count)个)")
-            } footer: {
-                Text("删除模型将清除本地缓存文件,释放存储空间。")
-            }
-
-            Section {
-                Button(role: .destructive) {
-                    showingDeleteAllAlert = true
-                } label: {
-                    HStack {
-                        Image(systemName: "trash.slash")
-                        Text("删除所有模型")
-                    }
-                }
-            }
-        }
-        .navigationTitle("已下载模型")
-        .alert("删除模型", isPresented: $showingDeleteAlert) {
-            Button("取消", role: .cancel) { }
-            Button("删除", role: .destructive) {
-                if let name = modelToDelete {
-                    mlxService.removeModel(name)
-                    if selectedModelName == name {
-                        // Reset to first available model
-                        if let first = MLXService.availableModels.first {
-                            selectedModelName = first.name
-                        }
-                    }
-                }
-            }
-        } message: {
-            Text("确定要删除模型 \"\(modelToDelete ?? "")\" 吗?删除后将无法使用该模型,需要重新下载。")
-        }
-        .alert("删除所有模型", isPresented: $showingDeleteAllAlert) {
-            Button("取消", role: .cancel) { }
-            Button("删除全部", role: .destructive) {
-                mlxService.clearAllModels()
-                if let first = MLXService.availableModels.first {
-                    selectedModelName = first.name
-                }
-            }
-        } message: {
-            Text("确定要删除所有已下载的模型吗?这将释放所有模型占用的存储空间。")
-        }
-    }
-}
-
-#Preview {
-    SettingsView()
-        .environmentObject(AppState(viewContext: PersistenceController.preview.container.viewContext))
-}

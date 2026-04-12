@@ -66,7 +66,8 @@ struct ModelDownloadMetadata: Codable {
         }
         record.lastUpdated = Date()
         files[filename] = record
-        let downloadedSize = files.values.filter { $0.status == .completed }.reduce(0) { $0 + $1.size }
+        // 更新总下载大小
+        self.downloadedSize = files.values.filter { $0.status == .completed }.reduce(0) { $0 + $1.size }
         lastUpdated = Date()
     }
     
