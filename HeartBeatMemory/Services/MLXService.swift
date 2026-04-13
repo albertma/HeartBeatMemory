@@ -187,24 +187,37 @@ class MLXService {
     }
 
     /// 获取已下载模型占用磁盘空间(字节)
+    /// 只计算已完成的文件，不包括 .tmp 文件
     func modelDiskSize(_ model: LMModel) -> Int64? {
-        // Documents 优先,否则查 Caches
+        let repoId = model.configuration.name
+        
+        // 检查两个目录：Documents 和 Caches
         let docsDir = persistentHubApi.localRepoLocation(repo(for: model.configuration))
         let cacheDir = downloadHubApi.localRepoLocation(repo(for: model.configuration))
-        let dir = FileManager.default.fileExists(atPath: docsDir.path) ? docsDir : cacheDir
-        guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
-        let sizeKey = URLResourceKey.fileSizeKey
-        guard let enumerator = FileManager.default.enumerator(
-            at: dir, includingPropertiesForKeys: [sizeKey], options: .skipsHiddenFiles
-        ) else { return nil }
-
+        
         var total: Int64 = 0
-        for case let url as URL in enumerator {
-            if let size = try? url.resourceValues(forKeys: [sizeKey]).fileSize {
-                total += Int64(size)
+        
+        // 遍历目录并累加文件大小
+        for dir in [docsDir, cacheDir] {
+            guard FileManager.default.fileExists(atPath: dir.path) else { continue }
+            
+            let sizeKey = URLResourceKey.fileSizeKey
+            guard let enumerator = FileManager.default.enumerator(
+                at: dir, includingPropertiesForKeys: [sizeKey], options: .skipsHiddenFiles
+            ) else { continue }
+            
+            for case let url as URL in enumerator {
+                // 排除 .tmp 文件（未完成的下载）
+                if url.pathExtension == "tmp" {
+                    continue
+                }
+                if let size = try? url.resourceValues(forKeys: [sizeKey]).fileSize {
+                    total += Int64(size)
+                }
             }
         }
-        return total
+        
+        return total > 0 ? total : nil
     }
     
     /// 计算下载进度（供 View 使用）
@@ -382,14 +395,6 @@ class MLXService {
         try? deleteModel(model)
     }
 
-    /// 清除所有已下载模型
-    func clearAllModels() {
-        modelCache.removeAllObjects()
-        for model in Self.availableModels {
-            try? deleteModel(model)
-        }
-        NSLog("🗑️ 所有模型已清除")
-    }
 
     // MARK: - 诊断
 
