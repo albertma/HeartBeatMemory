@@ -189,7 +189,6 @@ class MLXService {
     /// 获取已下载模型占用磁盘空间(字节)
     /// 只计算已完成的文件，不包括 .tmp 文件
     func modelDiskSize(_ model: LMModel) -> Int64? {
-        let repoId = model.configuration.name
         
         // 检查两个目录：Documents 和 Caches
         let docsDir = persistentHubApi.localRepoLocation(repo(for: model.configuration))
