@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MLXLMCommon
 
 /// Toolbar view for the chat interface that displays error messages, download progress,
 /// generation statistics, and model selection controls.
@@ -33,7 +34,7 @@ struct ChatToolbarView: View {
             )
         }
 
-        // Model selection picker
+        // Model selection picker - 添加内置模型
         Picker("Model", selection: $vm.selectedModel) {
             ForEach(MLXService.availableModels) { model in
                 Text(model.displayName)

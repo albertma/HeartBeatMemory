@@ -53,9 +53,32 @@ struct ModelDownloadView: View {
                 }
             }
             
-            // 模型列表 - 实时更新下载状态
-            Section("可用模型") {
-                ForEach(MLXService.availableModels) { model in
+            // 内置模型信息
+            if mlxService.hasBundledModel {
+                Section("内置模型") {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Qwen2-VL-2B (内置)")
+                                .font(.headline)
+                            Text("开箱即用，无需下载")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("约 1.2 GB")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(.green)
+                            .font(.title2)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            
+            // 可下载模型列表 - 实时更新下载状态
+            Section("可下载模型") {
+                ForEach(MLXService.availableModels.filter { $0.name != "qwen2VL:2b" }) { model in
                     ModelItemRow(
                         model: model,
                         downloadStatus: getDownloadStatus(for: model),

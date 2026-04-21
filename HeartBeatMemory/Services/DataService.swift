@@ -123,4 +123,30 @@ class DataService: ObservableObject {
     func fetchLocationHistory(from startDate: Date, to endDate: Date) -> [CLLocation] {
         return []
     }
+    
+    /// 获取近30天有照片的日期列表（去重）
+    func fetchPhotoDatesInLast30Days() async -> [Date] {
+        let endDate = Date()
+        let startDate = Calendar.current.date(byAdding: .day, value: -30, to: endDate)!
+        
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.predicate = NSPredicate(
+            format: "creationDate >= %@ AND creationDate <= %@",
+            startDate as NSDate,
+            endDate as NSDate
+        )
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        
+        let assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+        var dateSet = Set<Date>()
+        
+        assets.enumerateObjects { asset, _, _ in
+            if let creationDate = asset.creationDate {
+                let dayStart = Calendar.current.startOfDay(for: creationDate)
+                dateSet.insert(dayStart)
+            }
+        }
+        
+        return Array(dateSet).sorted(by: >)
+    }
 }

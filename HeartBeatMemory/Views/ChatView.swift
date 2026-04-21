@@ -149,6 +149,10 @@ struct ChatView: View {
     // MARK: - 模型选择菜单
     private var modelSelectorMenu: some View {
         Menu {
+            // 内置模型优先显示
+            modelMenuButton(name: "qwen2VL:2b", displayName: "Qwen2-VL-2B (内置)", type: .vlm)
+            
+            // 其他可用模型
             ForEach(MLXService.availableModels, id: \.name) { model in
                 modelMenuButton(model: model)
             }
@@ -162,7 +166,38 @@ struct ChatView: View {
         }
     }
     
-    // MARK: - 模型菜单按钮
+    // MARK: - 模型菜单按钮 (新方法)
+    private func modelMenuButton(name: String, displayName: String, type: LMModel.ModelType) -> some View {
+        Button {
+            if type == .llm {
+                viewModel.mediaSelection.images = []
+                viewModel.mediaSelection.videos = []
+            }
+            // 查找对应的模型
+            if let existingModel = MLXService.availableModels.first(where: { $0.name == name }) {
+                viewModel.selectedModel = existingModel
+            } else {
+                // 如果找不到，创建临时模型（用于内置模型）
+                let config = type == .vlm ? ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit") : ModelConfiguration(id: "")
+                let tempModel = LMModel(name: name, configuration: config, type: type)
+                viewModel.selectedModel = tempModel
+            }
+        } label: {
+            HStack {
+                Text(displayName)
+                if name == "qwen2VL:2b" || name.contains("qwen") {
+                    Text("(内置)")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                }
+                if viewModel.selectedModel.name == name {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
+    }
+    
+    // MARK: - 模型菜单按钮 (现有方法)
     private func modelMenuButton(model: LMModel) -> some View {
         Button {
             if model.type == .llm {

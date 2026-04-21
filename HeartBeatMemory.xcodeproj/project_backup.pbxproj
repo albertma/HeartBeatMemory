@@ -11,7 +11,6 @@
 		5360FCB92F7A33050013E0D7 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 5360FCB82F7A33050013E0D7 /* MLXVLM */; };
 		5360FCBF2F7A38380013E0D7 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 5360FCBE2F7A38380013E0D7 /* MLXLMCommon */; };
 		5360FCC12F7A383D0013E0D7 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 5360FCC02F7A383D0013E0D7 /* MLXEmbedders */; };
-		53A8D6422F8D2E34006D9CBC /* LLM in Resources */ = {isa = PBXBuildFile; fileRef = 53A8D6412F8D2E34006D9CBC /* LLM */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,7 +37,6 @@
 		5360FD292F85E91E0013E0D7 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		5360FD622F8680910013E0D7 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		53A8D54D2F8C92A6006D9CBC /* README_en.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README_en.md; sourceTree = "<group>"; };
-		53A8D6412F8D2E34006D9CBC /* LLM */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LLM; path = HeartBeatMemory/LLM; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -46,12 +44,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				"LLM/Qwen2-VL-2B-Instruct-4bit/config.json",
-				"LLM/Qwen2-VL-2B-Instruct-4bit/model.safetensors",
-				"LLM/Qwen2-VL-2B-Instruct-4bit/model.safetensors.index.json",
-				"LLM/Qwen2-VL-2B-Instruct-4bit/preprocessor_config.json",
-				"LLM/Qwen2-VL-2B-Instruct-4bit/tokenizer_config.json",
-				"LLM/Qwen2-VL-2B-Instruct-4bit/tokenizer.json",
 				Skills/README.md,
 			);
 			target = 5308793A2F5EA309004E4E27 /* HeartBeatMemory */;
@@ -111,7 +103,6 @@
 		530879322F5EA309004E4E27 = {
 			isa = PBXGroup;
 			children = (
-				53A8D6412F8D2E34006D9CBC /* LLM */,
 				5360FD622F8680910013E0D7 /* Package.swift */,
 				5360FD292F85E91E0013E0D7 /* README.md */,
 				53A8D54D2F8C92A6006D9CBC /* README_en.md */,
@@ -150,7 +141,6 @@
 				530879372F5EA309004E4E27 /* Sources */,
 				530879382F5EA309004E4E27 /* Frameworks */,
 				530879392F5EA309004E4E27 /* Resources */,
-				53A8D6432F8FD029006D9CBC /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -269,7 +259,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				53A8D6422F8D2E34006D9CBC /* LLM in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -288,27 +277,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		53A8D6432F8FD029006D9CBC /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 8;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n\npython \"${SRCROOT}/scripts/download_llm_model.py\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		530879372F5EA309004E4E27 /* Sources */ = {
@@ -352,7 +320,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = HeartBeatMemory/HeartBeatMemory.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -372,7 +340,6 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UILaunchStoryboardName = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -397,7 +364,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = HeartBeatMemory/HeartBeatMemory.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -416,7 +383,6 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UILaunchStoryboardName = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (

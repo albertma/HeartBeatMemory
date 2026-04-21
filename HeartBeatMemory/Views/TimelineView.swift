@@ -8,42 +8,87 @@ struct TimelineView: View {
     @State private var showingPermissionAlert: Bool = false
     @State private var permissionAlertMessage: String = ""
     @State private var selectedMemory: HeartBeatMemory?
+    @State private var lastGeneratedDate: Date? = nil  // 防止重复触发
+    @State private var showLoadMore: Bool = false  // 是否显示加载更多
+    @State private var footerID: UUID = UUID()  // 用于滚动到底部检测
+    @State private var showCalendarPicker: Bool = false
+    @State private var photoDates: [Date] = []  // 有照片的日期列表
+    @State private var memoryDates: Set<Date> = []  // 已有memory的日期集合
     
     var body: some View {
         NavigationStack {
             ScrollView {
-                if appState.memories.isEmpty {
-                    EmptyStateView()
-                } else {
-                    LazyVStack(spacing: 16) {
-                        ForEach(appState.memories.sorted(by: { $0.date > $1.date })) { memory in
-                            MemoryCard(hbMemory: memory)
-                                .onTapGesture {
-                                    selectedMemory = memory
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        appState.deleteMemory(memory)
-                                    } label: {
-                                        Label("删除", systemImage: "trash")
-                                    }
-                                }
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        appState.deleteMemory(memory)
-                                    } label: {
-                                        Label("删除", systemImage: "trash")
-                                    }
-                                }
-                        }
+                LazyVStack(spacing: 16) {
+                    // 空状态
+                    if appState.memories.isEmpty && !appState.isProcessing {
+                        EmptyStateView()
                     }
-                    .padding()
+                    
+                    ForEach(sortedMemories) { memory in
+                        MemoryCard(hbMemory: memory)
+                            .onTapGesture {
+                                selectedMemory = memory
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    appState.deleteMemory(memory)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    appState.deleteMemory(memory)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                    }
+                    
+                    // 加载更多 - 滚动到底部时显示
+                    if showLoadMore {
+                        VStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                            Text("下拉加载更多回忆...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
+                    } else if appState.isProcessing {
+                        HStack {
+                            ProgressView()
+                            Text("正在生成回忆...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                    }
+                    
+                    // 用于检测滚动到底部的 invisible footer
+                    Color.clear
+                        .frame(height: 1)
+                        .id("footer")
+                        .onAppear {
+                            NSLog("Footer appeared - at bottom!")
+                            checkLoadMore()
+                        }
                 }
+                .padding()
+            }
+            .onAppear {
+                loadPendingIfNeeded()
             }
             .navigationTitle(LocalizedStringKey("timeline"))
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: generateTodayMemory) {
+                    Button(action: {
+                        Task {
+                            await loadCalendarData()
+                        }
+                        showCalendarPicker = true
+                    }) {
                         if appState.isProcessing {
                             ProgressView()
                         } else {
@@ -53,10 +98,32 @@ struct TimelineView: View {
                     .disabled(appState.isProcessing)
                 }
             }
+            .sheet(isPresented: $showCalendarPicker) {
+                CalendarPickerView(
+                    photoDates: photoDates,
+                    memoryDates: memoryDates,
+                    onDateSelected: { selectedDate in
+                        handleDateSelection(selectedDate)
+                    }
+                )
+            }
             .alert("权限请求", isPresented: $showingPermissionAlert) {
                 Button("确定") { }
             } message: {
                 Text(permissionAlertMessage)
+            }
+            .alert("覆盖回忆", isPresented: $showOverwriteAlert) {
+                Button("取消", role: .cancel) {
+                    overwriteDate = nil
+                }
+                Button("覆盖", role: .destructive) {
+                    if let date = overwriteDate {
+                        generateMemoryForDate(date)
+                    }
+                    overwriteDate = nil
+                }
+            } message: {
+                Text("该日期已有回忆覆盖生成吗？\n\n点击覆盖将删除原回忆并生成新的回忆。")
             }
             .sheet(item: $selectedMemory) { memory in
                 MemoryDetailView(memory: memory)
@@ -66,7 +133,6 @@ struct TimelineView: View {
     
     func generateTodayMemory() {
         Task {
-            // Request permissions first
             let authorized = await DataService.shared.requestAllPermissions()
             
             if authorized {
@@ -79,10 +145,118 @@ struct TimelineView: View {
             }
         }
     }
+    
+    // 加载日历数据（照片日期和已有memory的日期）
+    func loadCalendarData() async {
+        let dates = await DataService.shared.fetchPhotoDatesInLast30Days()
+        let memoriesDaySet = Set(appState.memories.map { Calendar.current.startOfDay(for: $0.date) })
+        
+        await MainActor.run {
+            photoDates = dates
+            memoryDates = memoriesDaySet
+        }
+    }
+    
+    // 处理日期选择
+    func handleDateSelection(_ date: Date) {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let existingMemory = appState.memories.first { Calendar.current.startOfDay(for: $0.date) == startOfDay }
+        
+        if let existingMemory = existingMemory {
+            // 已有memory，显示覆盖确认对话框
+            showOverwriteAlert(date: date, existingMemory: existingMemory)
+        } else {
+            // 没有memory，直接生成
+            generateMemoryForDate(date)
+        }
+    }
+    
+    // 显示覆盖确认对话框
+    @State private var showOverwriteAlert: Bool = false
+    @State private var overwriteDate: Date?
+    
+    private func showOverwriteAlert(date: Date, existingMemory: HeartBeatMemory) {
+        overwriteDate = date
+        showOverwriteAlert = true
+    }
+    
+    // 生成指定日期的memory（会覆盖已有）
+    private func generateMemoryForDate(_ date: Date) {
+        Task {
+            let authorized = await DataService.shared.requestAllPermissions()
+            
+            if authorized {
+                // 如果已有memory，先删除
+                let startOfDay = Calendar.current.startOfDay(for: date)
+                if let existing = appState.memories.first(where: { Calendar.current.startOfDay(for: $0.date) == startOfDay }) {
+                    appState.deleteMemory(existing)
+                }
+                
+                await appState.generateMemory(for: date)
+            } else {
+                await MainActor.run {
+                    permissionAlertMessage = "需要访问日历、照片等权限来生成回忆。请在设置中开启权限。"
+                    showingPermissionAlert = true
+                }
+            }
+        }
+    }
+    
+    // 排序后的回忆列表
+    private var sortedMemories: [HeartBeatMemory] {
+        appState.memories.sorted(by: { $0.date > $1.date })
+    }
+    
+    // 加载待生成日期
+    private func loadPendingIfNeeded() {
+        NSLog("loadPendingIfNeeded")
+        Task {
+            let authorized = await DataService.shared.requestAllPermissions()
+            if authorized {
+                await appState.loadPendingPhotoDates()
+                NSLog("Pending dates loaded: \(appState.pendingPhotoDates.count)")
+            }
+        }
+    }
+    
+    // 检查是否需要加载更多
+    private func checkLoadMore() {
+        NSLog("checkLoadMore called - pending: \(appState.pendingPhotoDates.count), processing: \(appState.isProcessing)")
+        
+        guard !appState.isProcessing && !appState.pendingPhotoDates.isEmpty else {
+            showLoadMore = false
+            return
+        }
+        
+        // 防止重复触发
+        if let nextDate = appState.pendingPhotoDates.first {
+            if lastGeneratedDate != nextDate {
+                NSLog("Loading more - next date: \(nextDate)")
+                showLoadMore = true
+                lastGeneratedDate = nextDate
+                Task {
+                    await appState.generateNextPendingMemory()
+                }
+            }
+        }
+    }
 }
 
-// MARK: - Empty State View
+// MARK: - Preference Keys (保留但不使用)
 
+struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 20) {
@@ -141,14 +315,14 @@ struct MemoryCard: View {
                 .font(.body)
                 .lineLimit(3)
             
-            // 👇 这里是修复后的整齐标签
+            // 标签
             if !hbMemory.aiTags.isEmpty {
                 FlowLayout(spacing: 8, lineSpacing: 6) {
-                    ForEach(hbMemory.aiTags, id: \.self) { tag in
+                    ForEach(Array(hbMemory.aiTags.enumerated()), id: \.offset) { index, tag in
                         Text("#\(tag)")
                             .font(.caption)
                             .foregroundColor(.blue)
-                            .lineLimit(1) // 强制不折行
+                            .lineLimit(1)
                     }
                 }
             }
@@ -490,7 +664,7 @@ struct MemoryDetailView: View {
                 .foregroundColor(.orange)
 
             FlowLayout(spacing: 8, lineSpacing: 8) {
-                ForEach(memory.aiTags, id: \.self) { tag in
+                ForEach(Array(memory.aiTags.enumerated()), id: \.offset) { index, tag in
                     Text("#\(tag)")
                         .font(.subheadline)
                         .padding(.horizontal, 12)
@@ -498,10 +672,10 @@ struct MemoryDetailView: View {
                         .background(Color.orange.opacity(0.15))
                         .cornerRadius(16)
                         .foregroundColor(.orange)
-                        .lineLimit(1) // 👈 强制不换行，彻底杜绝乱序
+                        .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading) // 👈 强制左对齐
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -662,4 +836,247 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Custom Calendar Picker View
+
+struct CalendarPickerView: View {
+    let photoDates: [Date]
+    let memoryDates: Set<Date>
+    let onDateSelected: (Date) -> Void
+    
+    @Environment(\.dismiss) var dismiss
+    @State private var selectedMonth: Date = Date()
+    @State private var selectedDate: Date?
+    
+    private let calendar = Calendar.current
+    private let columns = Array(repeating: GridItem(.flexible()), count: 7)
+    private let weekdaySymbols = ["日", "一", "二", "三", "四", "五", "六"]
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 月份选择
+                HStack {
+                    Button(action: {
+                        selectedMonth = calendar.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(monthYearString)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        if canGoToNextMonth {
+                            selectedMonth = calendar.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
+                        }
+                    }) {
+                        Image(systemName: "chevron.right")
+                            .font(.title2)
+                            .foregroundColor(canGoToNextMonth ? .blue : .gray)
+                    }
+                    .disabled(!canGoToNextMonth)
+                }
+                .padding()
+                
+                // 星期标题
+                HStack {
+                    ForEach(weekdaySymbols, id: \.self) { symbol in
+                        Text(symbol)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal)
+                
+                // 日历网格
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(daysInMonth(), id: \.self) { date in
+                        if let date = date {
+                            CalendarDayCell(
+                                date: date,
+                                isCurrentMonth: isInCurrentMonth(date),
+                                hasPhoto: hasPhoto(on: date),
+                                hasMemory: hasMemory(on: date),
+                                isSelected: selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false,
+                                isToday: calendar.isDateInToday(date),
+                                onTap: {
+                                    if hasPhoto(on: date) {
+                                        selectedDate = date
+                                        onDateSelected(date)
+                                        dismiss()
+                                    }
+                                }
+                            )
+                        } else {
+                            Color.clear
+                                .frame(height: 44)
+                        }
+                    }
+                }
+                .padding()
+                
+                // 图例
+                HStack(spacing: 20) {
+                    LegendItem(color: .green, text: "有照片（可生成）")
+                    LegendItem(color: .orange, text: "已有回忆")
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                
+                Spacer()
+            }
+            .navigationTitle("选择日期")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完成") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy年M月"
+        return formatter.string(from: selectedMonth)
+    }
+    
+    private var canGoToNextMonth: Bool {
+        let now = Date()
+        let nextMonth = calendar.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
+        return calendar.compare(nextMonth, to: now, toGranularity: .month) != .orderedDescending
+    }
+    
+    private func isInCurrentMonth(_ date: Date) -> Bool {
+        calendar.isDate(date, equalTo: selectedMonth, toGranularity: .month)
+    }
+    
+    private func hasPhoto(on date: Date) -> Bool {
+        let startOfDay = calendar.startOfDay(for: date)
+        return photoDates.contains { calendar.isDate($0, inSameDayAs: startOfDay) }
+    }
+    
+    private func hasMemory(on date: Date) -> Bool {
+        let startOfDay = calendar.startOfDay(for: date)
+        return memoryDates.contains { calendar.isDate($0, inSameDayAs: startOfDay) }
+    }
+    
+    private func daysInMonth() -> [Date?] {
+        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
+        let range = calendar.range(of: .day, in: .month, for: selectedMonth)!
+        let firstWeekday = calendar.component(.weekday, from: startOfMonth)
+        
+        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
+        
+        for day in 1..<range.count {
+            if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
+                days.append(date)
+            }
+        }
+        
+        return days
+    }
+}
+
+// MARK: - Calendar Day Cell
+
+struct CalendarDayCell: View {
+    let date: Date
+    let isCurrentMonth: Bool
+    let hasPhoto: Bool
+    let hasMemory: Bool
+    let isSelected: Bool
+    let isToday: Bool
+    let onTap: () -> Void
+    
+    private let calendar = Calendar.current
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 2) {
+                Text("\(calendar.component(.day, from: date))")
+                    .font(.body)
+                    .fontWeight(isToday ? .bold : .regular)
+                    .foregroundColor(textColor)
+                
+                // 状态指示点
+                HStack(spacing: 2) {
+                    if hasMemory {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 6, height: 6)
+                    } else if hasPhoto {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(backgroundColor)
+            .cornerRadius(8)
+        }
+        .disabled(!hasPhoto)
+    }
+    
+    private var textColor: Color {
+        if !isCurrentMonth {
+            return .gray
+        }
+        if isSelected {
+            return .white
+        }
+        if !hasPhoto {
+            return .gray
+        }
+        return .primary
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return .blue
+        }
+        if hasMemory {
+            return .orange.opacity(0.1)
+        }
+        if hasPhoto {
+            return .green.opacity(0.1)
+        }
+        return .clear
+    }
+}
+
+// MARK: - Legend Item
+
+struct LegendItem: View {
+    let color: Color
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(text)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
 }

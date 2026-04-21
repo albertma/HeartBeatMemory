@@ -19,6 +19,8 @@ class AppState: ObservableObject {
     @Published var isFirstLaunch: Bool
     @Published var memories: [HeartBeatMemory] = []
     @Published var isProcessing: Bool = false
+    @Published var toastMessage: String?
+    @Published var pendingPhotoDates: [Date] = []  // 有照片但未生成memory的日期
     
     private let dataService = DataService.shared
     private let aiService = AIService.shared
@@ -44,9 +46,10 @@ class AppState: ObservableObject {
         // Try Core Data first if available
         if let context = viewContext {
             loadMemoriesFromCoreData(context)
-        } else {
-            loadMemoriesFromUserDefaults()
         }
+//        else {
+//            loadMemoriesFromUserDefaults()
+//        }
     }
     
     private func loadMemoriesFromCoreData(_ context: NSManagedObjectContext) {
@@ -72,16 +75,16 @@ class AppState: ObservableObject {
             }
         } catch {
             NSLog("Error loading memories from Core Data: \(error)")
-            loadMemoriesFromUserDefaults()
+            //loadMemoriesFromUserDefaults()
         }
     }
     
-    private func loadMemoriesFromUserDefaults() {
-        if let data = UserDefaults.standard.data(forKey: memoriesKey),
-           let saved = try? JSONDecoder().decode([HeartBeatMemory].self, from: data) {
-            memories = saved
-        }
-    }
+//    private func loadMemoriesFromUserDefaults() {
+//        if let data = UserDefaults.standard.data(forKey: memoriesKey),
+//           let saved = try? JSONDecoder().decode([HeartBeatMemory].self, from: data) {
+//            memories = saved
+//        }
+//    }
     
     private func saveMemoryToCoreData(_ memory: HeartBeatMemory, context: NSManagedObjectContext) {
         let entity = MemoryEntity(context: context)
@@ -103,13 +106,13 @@ class AppState: ObservableObject {
         }
     }
     
-    private func saveMemoryToUserDefaults(_ memory: HeartBeatMemory) {
-        var currentMemories = memories
-        currentMemories.insert(memory, at: 0)
-        if let data = try? JSONEncoder().encode(currentMemories) {
-            UserDefaults.standard.set(data, forKey: memoriesKey)
-        }
-    }
+//    private func saveMemoryToUserDefaults(_ memory: HeartBeatMemory) {
+//        var currentMemories = memories
+//        currentMemories.insert(memory, at: 0)
+//        if let data = try? JSONEncoder().encode(currentMemories) {
+//            UserDefaults.standard.set(data, forKey: memoriesKey)
+//        }
+//    }
     
     private func deleteMemoryFromCoreData(_ memory: HeartBeatMemory, context: NSManagedObjectContext) {
         let request: NSFetchRequest<MemoryEntity> = MemoryEntity.fetchRequest()
@@ -126,13 +129,13 @@ class AppState: ObservableObject {
         }
     }
     
-    private func deleteMemoryFromUserDefaults(_ memory: HeartBeatMemory) {
-        var currentMemories = memories
-        currentMemories.removeAll { $0.id == memory.id }
-        if let data = try? JSONEncoder().encode(currentMemories) {
-            UserDefaults.standard.set(data, forKey: memoriesKey)
-        }
-    }
+//    private func deleteMemoryFromUserDefaults(_ memory: HeartBeatMemory) {
+//        var currentMemories = memories
+//        currentMemories.removeAll { $0.id == memory.id }
+//        if let data = try? JSONEncoder().encode(currentMemories) {
+//            UserDefaults.standard.set(data, forKey: memoriesKey)
+//        }
+//    }
     
     // MARK: - Codable Helpers
     
@@ -164,6 +167,19 @@ class AppState: ObservableObject {
             
             NSLog("fetched events number: \(events.count), photos:\(photos.count)")
             
+            // 没有照片时不生成日记
+            guard !photos.isEmpty else {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "MM月dd日"
+                let dateString = dateFormatter.string(from: date)
+                NSLog("No photos for date \(date), skip generating diary")
+                await MainActor.run {
+                    isProcessing = false
+                    toastMessage = "\(dateString) 没有照片，无法生成日记"
+                }
+                return
+            }
+            
             let memory = try await aiService.generateDailyMemory(
                 date: date,
                 events: events,
@@ -177,9 +193,10 @@ class AppState: ObservableObject {
                 // Save to Core Data or UserDefaults
                 if let context = viewContext {
                     saveMemoryToCoreData(memory, context: context)
-                } else {
-                    saveMemoryToUserDefaults(memory)
                 }
+//                else {
+//                    saveMemoryToUserDefaults(memory)
+//                }
                 
                 isProcessing = false
             }
@@ -196,8 +213,43 @@ class AppState: ObservableObject {
         
         if let context = viewContext {
             deleteMemoryFromCoreData(memory, context: context)
-        } else {
-            deleteMemoryFromUserDefaults(memory)
         }
+//        else {
+//            deleteMemoryFromUserDefaults(memory)
+//        }
+    }
+    
+    // MARK: - Load Pending Photo Dates
+    
+    /// 加载近30天有照片但未生成memory的日期列表
+    func loadPendingPhotoDates() async {
+        let photoDates = await DataService.shared.fetchPhotoDatesInLast30Days()
+        let memoryDates = Set(memories.map { Calendar.current.startOfDay(for: $0.date) })
+        
+        let pending = photoDates.filter { !memoryDates.contains($0) }
+        
+        await MainActor.run {
+            pendingPhotoDates = pending
+        }
+        
+        NSLog("Pending photo dates: \(pending.count)")
+    }
+    
+    /// 生成下一个pending的memory
+    func generateNextPendingMemory() async {
+        guard !pendingPhotoDates.isEmpty else {
+            await MainActor.run {
+                toastMessage = "所有有照片的日期都已生成回忆"
+            }
+            return
+        }
+        
+        guard !isProcessing else { return }
+        
+        let nextDate = pendingPhotoDates.removeFirst()
+        await generateMemory(for: nextDate)
+        
+        // 重置状态，允许继续加载下一个
+        NSLog("generateNextPendingMemory completed, pending count: \(pendingPhotoDates.count)")
     }
 }

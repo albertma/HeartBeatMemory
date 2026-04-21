@@ -10,11 +10,20 @@ class SharedMLXService {
     let mlxService = MLXService()
 }
 
+// 全局 PreloadModelService 实例
+@Observable
+class SharedPreloadModelService {
+    static let shared = SharedPreloadModelService()
+    
+    let preloadService = PreloadModelService.shared
+}
+
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("openAIKey") private var openAIKey: String = ""
     @AppStorage("autoGenerate") private var autoGenerate: Bool = true
     @AppStorage("generateTime") private var generateTime: Date = Date()
+    @AppStorage("llmTemperature") private var llmTemperature: Double = 0.3
 
     // MLX Model settings
     @AppStorage("EnableLocalLLM") private var enableLocalLLM: Bool = false
@@ -22,31 +31,102 @@ struct SettingsView: View {
 
     // 使用 @Bindable 让 UI 响应 MLXService 状态变化
     @Bindable private var sharedService = SharedMLXService.shared
+    
+    // 使用 @Bindable 让 UI 响应 PreloadModelService 状态变化
+    @Bindable private var sharedPreloadService = SharedPreloadModelService.shared
 
     private var mlxService: MLXService { sharedService.mlxService }
+    private var preloadService: PreloadModelService { sharedPreloadService.preloadService }
 
     @State private var showingKeyInput: Bool = false
     @State private var showingModelInfo: Bool = false
     @State private var showingDownloadedModels: Bool = false
     @State private var modelToDelete: String?
 
+    // 检测是否有内置模型
+    private var hasBundledModel: Bool {
+        mlxService.hasBundledModel
+    }
+    
+    // 获取内置模型信息
+    private var bundledModelInfo: (name: String, displayName: String, type: LMModel.ModelType)? {
+        // 优先从 MLXService 获取
+        if let info = mlxService.bundledModelInfo {
+            return info
+        }
+        
+        // 备选：直接返回内置模型信息（即使 bundle 暂时找不到也显示）
+        // 这允许用户在 Xcode 项目配置完成后使用内置模型
+        return (
+            name: "qwen2VL:2b",
+            displayName: "Qwen2-VL-2B (内置)",
+            type: .vlm
+        )
+    }
+
+    // 检测是否有内置模型
+    
+    // 预加载状态
+    @State private var isPreloading: Bool = false
+    @State private var preloadError: String?
+
     var body: some View {
         NavigationStack {
             List {
                 // MLX Model Section
                 Section("本地AI模型") {
+                    // 内置模型提示
+                    if hasBundledModel {
+                        HStack {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundColor(.green)
+                            Text("内置模型已预装")
+                                .font(.subheadline)
+                            Spacer()
+                            Text("Qwen2-VL-2B")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("内置模型未配置")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            Text("请将 LLM 文件夹添加到 Xcode ")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
                     Toggle("启用本地模型", isOn: $enableLocalLLM)
 
                     if enableLocalLLM {
-                        // Model Selection
+                        // 模型选择
                         Picker("选择模型", selection: $selectedModelName) {
-                            ForEach(MLXService.availableModels) { model in
+                            HStack {
+                                Text("Qwen2-VL-2B (内置)")
+                                if hasBundledModel {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                } else {
+                                    Image(systemName: "questionmark.circle")
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                            .tag("qwen2VL:2b")
+                            
+                            ForEach(MLXService.availableModels.filter { $0.name != "qwen2VL:2b" }) { model in
                                 HStack {
                                     Text(model.displayName)
                                     if mlxService.isModelDownloaded(model) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(.green)
-                                            .font(.caption)
                                     }
                                 }
                                 .tag(model.name)
@@ -54,66 +134,57 @@ struct SettingsView: View {
                         }
                         .onAppear {
                             if selectedModelName.isEmpty {
-                                selectedModelName = MLXService.availableModels.first?.name ?? ""
+                                selectedModelName = "qwen2VL:2b"
                             }
                         }
 
-                        // 模型管理页面
+                        // 预加载按钮
+                        HStack {
+                            if preloadService.isPreloading {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                Text("预加载中...")
+                                    .font(.caption)
+                            } else if preloadService.isModelLoaded(selectedModelName) {
+                                Label("已预加载", systemImage: "bolt.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            } else {
+                                Button {
+                                    Task { await preloadSelectedModel() }
+                                } label: {
+                                    Label("预加载模型", systemImage: "bolt.fill")
+                                        .font(.caption)
+                                }
+                                .disabled(preloadService.isPreloading)
+                            }
+                            Spacer()
+                        }
+
+                        // 模型管理
                         NavigationLink {
                             ModelDownloadView()
                         } label: {
-                           
-                                Label("管理模型", systemImage: "square.stack.3d.down")
-                               
-                               
-                            
+                            Label("管理模型", systemImage: "square.stack.3d.down")
                         }
-
-//                        // Download Progress
-//                        if let progress = mlxService.modelDownloadProgress, !progress.isFinished {
-//                            ModelDownloadProgressView(progress: progress)
-//                        }
-
-                        // Downloaded Models List
-//                        let downloadedModels = mlxService.getDownloadedModels()
-//                        if !downloadedModels.isEmpty {
-//                            NavigationLink {
-//                                DownloadedModelsView(
-//                                    selectedModelName: $selectedModelName
-//                                )
-//                            } label: {
-//                                HStack {
-//                                    Label("已下载模型", systemImage: "square.stack.3d.up")
-//                                    Spacer()
-//                                    Text("\(downloadedModels.count)个")
-//                                        .foregroundColor(.secondary)
-//                                }
-//                            }
-//                        }
-
-                        // Download Model Button (for models not yet downloaded)
-//                        ForEach(MLXService.availableModels.filter { !mlxService.isModelDownloaded($0.name) }) { model in
-//                            Button {
-//                                Task {
-//                                    try? await mlxService.downloadModel(model)
-//                                }
-//                            } label: {
-//                                HStack {
-//                                    Image(systemName: "arrow.down.circle")
-//                                        .foregroundColor(.blue)
-//                                    Text("下载 \(model.name)")
-//                                    Spacer()
-//                                    if mlxService.modelDownloadProgress != nil {
-//                                        ProgressView()
-//                                            .scaleEffect(0.7)
-//                                    }
-//                                }
-//                            }
-//                        }
                     }
-                }
+                }// LLM Temperature 设置
+                Section("生成设置") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Temperature")
+                            Spacer()
+                            Text(String(format: "%.1f", llmTemperature))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $llmTemperature, in: 0...1, step: 0.1)
+                        Text("值越大越有创意，值越小越保守 (0.0-1.0)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }// End of Temperature
 
-                // OpenAI Section (shown when local model is disabled)
+// OpenAI Section (shown when local model is disabled)
 //                Section("云端AI设置") {
 //                    HStack {
 //                        Label("API Key", systemImage: "key")
@@ -177,6 +248,20 @@ struct SettingsView: View {
 
     private var selectedModelType: LMModel.ModelType {
         MLXService.availableModels.first { $0.name == selectedModelName }?.type ?? .llm
+    }
+    
+    // MARK: - 预加载方法
+    
+    private func preloadSelectedModel() async {
+        guard !selectedModelName.isEmpty else { return }
+        
+        do {
+            try await preloadService.preloadModel(selectedModelName)
+            preloadError = nil
+        } catch {
+            preloadError = "预加载失败: \(error.localizedDescription)"
+            NSLog("❌ 预加载失败: \(error)")
+        }
     }
 }
 

@@ -13,7 +13,6 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         var photoKeywords: [String] = []
         var allLocations = context.locations
         
-        // 从上下文提取关键词
         if let prefs = context.userPreferences {
             if let keywords = prefs["keywords"] as? [String] {
                 photoKeywords = keywords
@@ -30,16 +29,14 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             locations: allLocations
         )
         
-        // 获取 LLM 模型
         let modelName = UserDefaults.standard.string(forKey: "MLXModelName") 
             ?? MLXService.availableModels.first(where: { $0.type == .llm })?.name 
             ?? "qwen2VL:2b"
-        NSLog("GenerateDiarySkill Try to check LLM model: \(modelName)")
+        
         guard let model = MLXService.availableModels.first(where: { $0.name == modelName }) else {
             throw SkillError.executionFailed("LLM model not found")
         }
         
-        // 调用 MLX（自动下载并加载模型）
         var fullResponse = ""
         let stream = try await mlxService.generate(messages: [messages.system, messages.user], model: model)
         
@@ -73,7 +70,6 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         photoKeywords: [String],
         locations: [LocationData]
     ) -> Messages {
-        NSLog("GenerateDiarySkill Trying to build prompt")
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy年MM月dd日"
         let dateString = formatter.string(from: date)
@@ -93,7 +89,6 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             context += "日程：\(eventTitles)\n"
         }
         
-        
         let prompt = """
         严格按照以下要求生成，只输出JSON，不输出任何其他内容。
 
@@ -109,8 +104,7 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         
         let systemMsg = Message(role: .system, content: "你只输出标准JSON。不写文字，不解释，不闲聊")
         let userMsg = Message(role: .user, content: prompt)
-        NSLog("systemMsg: \(systemMsg.content)")
-        NSLog("userMsg: \(userMsg.content)")
+        
         return Messages(system: systemMsg, user: userMsg)
     }
     
@@ -123,27 +117,22 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
     }
     
     private func parseDiaryResponse(_ response: String, date: Date) throws -> ParsedDiary {
-        NSLog("response content: \(response)")
         var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 尝试先解析标准 JSON 格式
         if let parsed = try? parseJsonFormat(cleaned) {
             return parsed
         }
         
-        // 尝试解析类 Markdown 格式
         if let parsed = try? parseMarkdownFormat(cleaned) {
             return parsed
         }
         
-        // 都失败则抛出异常
         throw SkillError.executionFailed("无法解析日记")
     }
     
     private func parseJsonFormat(_ response: String) throws -> ParsedDiary {
         var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 提取 JSON
         if let start = cleaned.firstIndex(of: "{"),
            let end = cleaned.lastIndex(of: "}") {
             if start < end {
@@ -177,8 +166,6 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             
             if trimmed.hasPrefix("标题:") {
                 title = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("摘要:") {
-                summary = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
             } else if trimmed.hasPrefix("正文:") {
                 summary = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
             } else if trimmed.hasPrefix("心情:") {
@@ -187,9 +174,7 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
                 categoryStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
             } else if trimmed.hasPrefix("标签:") {
                 let tagStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                // 支持逗号分隔的多个标签
                 tags = tagStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
-                    + tagStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
             }
         }
         
@@ -214,7 +199,6 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         let categoryStr = json["category"] as? String ?? "日常"
         let tags = json["tags"] as? [String] ?? []
         
-        // 处理多值心情（用顿号或逗号分隔）
         let moods = moodStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
             + moodStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         let mood = Mood.allCases.first { moods.contains($0.rawValue) } ?? .neutral

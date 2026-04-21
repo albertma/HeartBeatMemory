@@ -45,8 +45,10 @@ struct DownloadStatusDetail: Equatable {
 // MARK: - LMModel 扩展:所有模型必须使用 mlx-community 下的公开 repo
 
 extension ModelConfiguration {
-    static let qwen2VL_2b     = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
-   // static let gemma3_4b    = ModelConfiguration(id: "mlx-community/gemma-3-4b-it-qat-4bit")
+    //static let fastVLM_0_5B     = ModelConfiguration(id: "mlx-community/FastVLM-0.5B-bf16")
+    // 内置模型
+    static let qwen2VL_2b      = ModelConfiguration(id: "mlx-community/Qwen2-VL-2B-Instruct-4bit")
+   
 }
 
 // MARK: - MLXService
@@ -58,8 +60,10 @@ class MLXService {
     // MARK: - 可用模型列表
     // ✅ 全部使用 mlx-community repo,保证 hf-mirror.com 可公开访问(无需登录)
     static let availableModels: [LMModel] = [
+        // 内置模型 (优先)
         LMModel(name: "qwen2VL:2b",   configuration: .qwen2VL_2b,   type: .vlm),
-//        LMModel(name: "gemma3-4b",   configuration: .gemma3_4b,   type: .vlm),
+        // 可下载模型
+       // LMModel(name: "FastVLM:0.5b",   configuration: .fastVLM_0_5B,   type: .vlm),
     ]
 
     // MARK: - App 状态检查(防止后台 GPU 调用)
@@ -105,6 +109,86 @@ class MLXService {
         Task {
             await checkAndResumeInterruptedDownloads()
         }
+    }
+
+    // MARK: - Bundle 模型检测
+
+    /// 检查是否有内置模型 (Qwen2-VL-2B-Instruct-4bit)
+    var hasBundledModel: Bool {
+        // 方法 1: 使用 subdirectory
+        if let _ = Bundle.main.url(
+            forResource: "Qwen2-VL-2B-Instruct-4bit",
+            withExtension: nil,
+            subdirectory: "LLM"
+        ) {
+            NSLog("method1:bundle.main.url loaded")
+            return true
+        }
+        
+        // 方法 2: 直接使用 resourcePath
+        if let resourcePath = Bundle.main.resourcePath {
+            let llmPath = (resourcePath as NSString).appendingPathComponent("LLM/Qwen2-VL-2B-Instruct-4bit")
+            if FileManager.default.fileExists(atPath: llmPath) {
+                NSLog("method2  resourcePath loaded")
+                return true
+            }
+        }
+        
+        // 方法 3: 查找 LLM 文件夹
+        if let llmURL = Bundle.main.url(forResource: "LLM", withExtension: nil) {
+            let modelURL = llmURL.appendingPathComponent("Qwen2-VL-2B-Instruct-4bit")
+            if FileManager.default.fileExists(atPath: modelURL.path) {
+                NSLog("method3  resourcePath loaded")
+                return true
+            }
+        }
+        
+        return false
+    }
+
+    /// 获取内置模型的 bundle URL
+    func getBundledModelURL() -> URL? {
+        // 方法 1: 使用 subdirectory
+        if let url = Bundle.main.url(
+            forResource: "Qwen2-VL-2B-Instruct-4bit",
+            withExtension: nil,
+            subdirectory: "LLM"
+        ) {
+            return url
+        }
+        
+        // 方法 2: 直接使用 resourcePath
+        if let resourcePath = Bundle.main.resourcePath {
+            let llmPath = (resourcePath as NSString).appendingPathComponent("LLM/Qwen2-VL-2B-Instruct-4bit")
+            if FileManager.default.fileExists(atPath: llmPath) {
+                return URL(fileURLWithPath: llmPath)
+            }
+        }
+        
+        // 方法 3: 查找 LLM 文件夹
+        if let llmURL = Bundle.main.url(forResource: "LLM", withExtension: nil) {
+            let modelURL = llmURL.appendingPathComponent("Qwen2-VL-2B-Instruct-4bit")
+            if FileManager.default.fileExists(atPath: modelURL.path) {
+                return modelURL
+            }
+        }
+        
+        return nil
+    }
+
+    /// 检查指定模型是否是内置模型
+    func isBundledModel(_ modelName: String) -> Bool {
+        return modelName == "qwen2VL:2b" && hasBundledModel
+    }
+
+    /// 获取内置模型信息
+    var bundledModelInfo: (name: String, displayName: String, type: LMModel.ModelType)? {
+        guard hasBundledModel else { return nil }
+        return (
+            name: "qwen2VL:2b",
+            displayName: "Qwen2-VL-2B (内置)",
+            type: .vlm
+        )
     }
 
     /// 检查并继续中断的下载
@@ -423,7 +507,55 @@ class MLXService {
         return results
     }
 
-    // MARK: - 模型加载(核心)
+    // MARK: - Bundle 模型加载
+
+    /// 从 App Bundle 加载预置模型 (与下载模型二选一)
+    /// - Parameter model: 模型配置
+    /// - Returns: ModelContainer
+    private func loadBundledModel(_ model: LMModel) async throws -> ModelContainer {
+        NSLog("📦 从 Bundle 加载模型: \(model.name)")
+        
+        // 1. 获取 bundle 内模型目录的 URL
+        // 模型文件放在 LLM/Qwen2-VL-2B-Instruct-4bit/ 下
+        guard let bundleURL = Bundle.main.url(
+            forResource: "Qwen2-VL-2B-Instruct-4bit",
+            withExtension: nil,
+            subdirectory: "LLM"
+        ) else {
+            NSLog("❌ Bundle 中找不到 Qwen2-VL-2B-Instruct-4bit 模型")
+            throw MLXError.bundleModelNotFound
+        }
+        
+        NSLog("📂 Bundle 模型路径: \(bundleURL.path)")
+        
+        // 2. 验证 config.json 存在
+        let configFile = bundleURL.appendingPathComponent("config.json")
+        guard FileManager.default.fileExists(atPath: configFile.path) else {
+            NSLog("❌ Bundle 中找不到 config.json")
+            throw MLXError.bundleModelNotFound
+        }
+        
+        // 3. 使用 directory config 加载
+        let localConfig = ModelConfiguration(directory: bundleURL)
+        
+        let factory: ModelFactory = switch model.type {
+            case .llm: LLMModelFactory.shared
+            case .vlm: VLMModelFactory.shared
+        }
+        
+        let container: ModelContainer
+        do {
+            container = try await factory.loadContainer(
+                hub: downloadHubApi,  // 使用现有的 hub
+                configuration: localConfig
+            ) { _ in }
+        } catch {
+            NSLog("❌ Bundle 模型加载失败: \(error)")
+            throw MLXError.bundledModelLoadFailed(error.localizedDescription)
+        }
+        
+        return container
+    }
 
     // MARK: - 目录查找
 
@@ -445,8 +577,10 @@ class MLXService {
 
     // MARK: - 加载模型(核心)
 
-    /// 加载优先级:内存缓存 → Documents → Caches → 下载到 Caches 再迁移到 Documents
-    private func load(model: LMModel) async throws -> ModelContainer {
+    /// 加载优先级:Bundle → 内存缓存 → Documents → Caches → 下载到 Caches 再迁移到 Documents
+    /// - Parameter model: LMModel
+    /// - Returns: ModelContainer
+    func load(model: LMModel) async throws -> ModelContainer {
         NSLog("load(\(model.name)) 开始")
 
         // 1. 内存缓存命中
@@ -463,7 +597,20 @@ class MLXService {
         }
         defer { Task { @MainActor in self.isLoadingModel = false } }
 
-        // 2. 文件不存在时先下载到 Caches
+        // 2. 优先尝试从 Bundle 加载 (预置模型)
+        if model.name == "qwen2VL:2b" {
+            do {
+                let container = try await loadBundledModel(model)
+                modelCache.setObject(container, forKey: model.name as NSString)
+                NSLog("✅ Bundle 模型加载成功: \(model.name)")
+                return container
+            } catch {
+                NSLog("⚠️ Bundle 加载失败,尝试下载: \(error)")
+                // 继续执行下载逻辑
+            }
+        }
+
+        // 3. 文件不存在时先下载到 Caches
         if !isModelDownloaded(model) {
             NSLog("📥 文件未完整,启动下载: \(model.name)")
             try await runResumableDownload(model: model)
@@ -471,11 +618,11 @@ class MLXService {
             migrateModelToDocuments(model)
         }
 
-        // 3. 找到本地目录(Documents 优先,其次 Caches)
+        // 4. 找到本地目录(Documents 优先,其次 Caches)
         let localDir = localModelDirectory(for: model)
         NSLog("📦 从本地目录加载: \(localDir.path)")
 
-        // 4. 用本地路径构造 ModelConfiguration,Hub 库看到 directory 形式的 id
+        // 5. 用本地路径构造 ModelConfiguration,Hub 库看到 directory 形式的 id
         //    会直接读本地文件,不请求 revision API,完全离线
         let localConfig = ModelConfiguration(directory: localDir)
 
@@ -771,7 +918,8 @@ class MLXService {
                 processing: processing
             )
             let lmInput = try await context.processor.prepare(input: userInput)
-            let parameters = GenerateParameters(maxTokens:128, temperature: 0.2, topP: 0.4, repetitionPenalty: 1.05)
+            let temperature = Float(UserDefaults.standard.double(forKey: "llmTemperature"))
+            let parameters = GenerateParameters(maxTokens:128, temperature: temperature > 0 ? temperature : 0.3, topP: 0.4, repetitionPenalty: 1.05)
             return try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
         }
     }
@@ -785,4 +933,6 @@ enum MLXError: Error {
     case generationFailed(String)
     case networkError
     case parseError
+    case bundleModelNotFound  // 新增
+    case bundledModelLoadFailed(String)  // 新增
 }

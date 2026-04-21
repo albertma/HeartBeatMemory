@@ -1,8 +1,9 @@
 import Foundation
-import Photos
-import CoreLocation
-import UIKit
 import MLXLMCommon
+import Photos
+import UIKit
+import ImageIO
+import CoreLocation
 import MapKit
 
 /// 照片分析 Skill - 使用 MLX VLM 分析照片
@@ -33,14 +34,13 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                         latitude: photoLoc.latitude,
                         longitude: photoLoc.longitude
                     )
-                    NSLog("Location Name: \(locationName)")
+                    NSLog("Location: \(locationName)")
                     let namedLocation = LocationData(
                         name: locationName,
                         latitude: photoLoc.latitude,
                         longitude: photoLoc.longitude,
                         timestamp: photoLoc.timestamp
                     )
-                    NSLog("Named Location: \(namedLocation)")
                     allLocations.append(namedLocation)
                 }
             }
@@ -76,12 +76,10 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             return nil
         }
         
-        // 加载图片
         guard let image = await loadImage(from: photo) else {
             return nil
         }
         
-        // 保存临时图片
         guard let tempURL = saveTempImage(image: image, identifier: photo.identifier) else {
             return nil
         }
@@ -89,21 +87,18 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
         let fileManager = FileManager.default
         defer { try? fileManager.removeItem(at: tempURL) }
         
-        // 构建 prompt
         let prompt = """
         观察图片，提取3-5个关键词。
         必须包含：场景、物体、动作、氛围。
         仅输出关键词，用逗号分隔，无其他文字。
         """
         
-        // 创建消息
         let systemMessage = Message(
             role: .system,
             content: "你只输出图片关键词，不解释，不造句，不输出多余内容。"
         )
         let userMessage = Message(role: .user, content: prompt, images: [tempURL])
         
-        // 调用 MLX（自动下载并加载模型）
         var fullResponse = ""
         do {
             let stream = try await mlxService.generate(messages: [systemMessage, userMessage], model: model)
@@ -114,7 +109,6 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             print("AnalyzePhotoSkill: MLX generate failed - \(error)")
         }
         
-        // 解析关键词
         let keywords = parseKeywords(from: fullResponse)
         let elements = keywords
         
@@ -152,7 +146,7 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool ?? false
                 if !isDegraded {
                     continuation.resume(returning: image)
                 }
@@ -183,15 +177,12 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     private func reverseGeocode(latitude: Double, longitude: Double) async -> String {
         let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         
-        // 尝试 MapKit（加大搜索范围和重试）
         for radius in [2000.0, 5000.0, 10000.0] {
-            NSLog("Searche with MapKit")
             if let result = await searchWithMapKit(coordinate: coordinate, radius: radius) {
                 return result
             }
         }
         
-        // Fallback: CLGeocoder
         return await reverseGeocodeFallback(latitude: latitude, longitude: longitude)
     }
     
@@ -211,48 +202,35 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             if let item = response.mapItems.first {
                 var components: [String] = []
                 
-                // POI 名称
                 if let name = item.name, !name.isEmpty {
                     components.append(name)
                 }
                 
-                // 使用 MKPlacemark 的详细字段（中国地址格式）
                 let placemark = item.placemark
-                
-                // 省级
                 if let administrativeArea = placemark.administrativeArea {
                     components.append(administrativeArea)
                 }
-                
-                // 城市
                 if let locality = placemark.locality {
                     if !components.contains(locality) {
                         components.append(locality)
                     }
                 }
-                
-                // 区/县
                 if let subLocality = placemark.subLocality {
                     components.append(subLocality)
                 }
                 
-                if let areasOfInterest = placemark.areasOfInterest {
-                    if !areasOfInterest.isEmpty{
-                        components.append(areasOfInterest.first!.description)
-                    }
+                if !components.isEmpty {
+                    return components.joined(separator: "")
                 }
-                
-                return components.isEmpty ? nil : components.joined(separator: "")
             }
         } catch {
-            print("AnalyzePhotoSkill: MKLocalSearch failed (radius=\(radius)) - \(error)")
+            print("AnalyzePhotoSkill: MKLocalSearch failed - \(error)")
         }
         
         return nil
     }
     
     private func reverseGeocodeFallback(latitude: Double, longitude: Double) async -> String {
-        NSLog("reverseGeocodeFallback")
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let geocoder = CLGeocoder()
         
@@ -262,29 +240,21 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             if let placemark = placemarks.first {
                 var components: [String] = []
                 
-                // 中国地址格式：省 -> 市 -> 区 -> 街道
-                if let administrativeArea = placemark.administrativeArea {  // 省/州
+                if let administrativeArea = placemark.administrativeArea {
                     components.append(administrativeArea)
                 }
-                if let locality = placemark.locality {  // 城市
+                if let locality = placemark.locality {
                     if !components.contains(locality) {
                         components.append(locality)
                     }
                 }
-                if let subLocality = placemark.subLocality {  // 区/县
+                if let subLocality = placemark.subLocality {
                     components.append(subLocality)
                 }
                 
-                if let areasOfInterests = placemark.areasOfInterest{
-                    if !areasOfInterests.isEmpty{
-                        components.append(areasOfInterests.first!.description)
-                    }
+                if !components.isEmpty {
+                    return components.joined(separator: "")
                 }
-               
-                if components.isEmpty {
-                    return formatCoordinate(CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
-                }
-                return components.joined(separator: "")
             }
         } catch {
             print("AnalyzePhotoSkill: CLGeocoder failed - \(error)")
