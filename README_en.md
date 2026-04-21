@@ -1,6 +1,7 @@
 # HeartBeatMemory
 
-Automatically generate warm life memory diaries from your photos and calendar events using AI.
+Automatically generate warm life memory diaries from your photos and calendar events using AI. Utilize VLM(Vision Language Model) on iOS device side, instead of Cloud VLM.
+I believe the future LLM is not only on Cloud side but also on device side.
 
 ## Features
 
