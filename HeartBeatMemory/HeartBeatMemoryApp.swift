@@ -5,15 +5,96 @@ import CoreData
 @main
 struct HeartBeatMemoryApp: App {
     @StateObject private var appState = AppState(viewContext: PersistenceController.shared.container.viewContext)
+    @AppStorage("hasShownSplashScreen") private var hasShownSplashScreen: Bool = false
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(appState)
-                .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+            if hasShownSplashScreen {
+                MainContentView()
+                    .environmentObject(appState)
+                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+            } else {
+                SplashScreenView()
+                    .environmentObject(appState)
+            }
         }
     }
 }
+
+// MARK: - MainContentView (原 ContentView)
+
+struct MainContentView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var selectedTab: Tab = .timeline
+    @State private var showToast = false
+    
+    enum Tab {
+        case timeline
+        case chat
+        case search
+        case settings
+    }
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            TimelineView()
+                .tabItem {
+                    Label(LocalizedStringKey("timeline"), systemImage: "clock")
+                }
+                .tag(Tab.timeline)
+            
+            ChatView()
+                .tabItem {
+                    Label(LocalizedStringKey("chat"), systemImage: "message")
+                }
+                .tag(Tab.chat)
+            
+            SearchView()
+                .tabItem {
+                    Label(LocalizedStringKey("search"), systemImage: "magnifyingglass")
+                }
+                .tag(Tab.search)
+            
+            
+            SettingsView()
+                .tabItem {
+                    Label(LocalizedStringKey("settings"), systemImage: "gear")
+                }
+                .tag(Tab.settings)
+        }
+        .sheet(isPresented: $appState.isFirstLaunch) {
+            OnboardingView()
+        }
+        .onChange(of: appState.toastMessage) { oldValue, newValue in
+            if newValue != nil {
+                showToast = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    showToast = false
+                    appState.toastMessage = nil
+                }
+            }
+        }
+        .overlay {
+            if showToast, let message = appState.toastMessage {
+                VStack {
+                    Spacer()
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(8)
+                        .padding(.bottom, 50)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: showToast)
+            }
+        }
+    }
+}
+
+// MARK: - AppState
 
 class AppState: ObservableObject {
     @Published var isFirstLaunch: Bool
@@ -47,9 +128,6 @@ class AppState: ObservableObject {
         if let context = viewContext {
             loadMemoriesFromCoreData(context)
         }
-//        else {
-//            loadMemoriesFromUserDefaults()
-//        }
     }
     
     private func loadMemoriesFromCoreData(_ context: NSManagedObjectContext) {
@@ -75,16 +153,8 @@ class AppState: ObservableObject {
             }
         } catch {
             NSLog("Error loading memories from Core Data: \(error)")
-            //loadMemoriesFromUserDefaults()
         }
     }
-    
-//    private func loadMemoriesFromUserDefaults() {
-//        if let data = UserDefaults.standard.data(forKey: memoriesKey),
-//           let saved = try? JSONDecoder().decode([HeartBeatMemory].self, from: data) {
-//            memories = saved
-//        }
-//    }
     
     private func saveMemoryToCoreData(_ memory: HeartBeatMemory, context: NSManagedObjectContext) {
         let entity = MemoryEntity(context: context)
@@ -106,14 +176,6 @@ class AppState: ObservableObject {
         }
     }
     
-//    private func saveMemoryToUserDefaults(_ memory: HeartBeatMemory) {
-//        var currentMemories = memories
-//        currentMemories.insert(memory, at: 0)
-//        if let data = try? JSONEncoder().encode(currentMemories) {
-//            UserDefaults.standard.set(data, forKey: memoriesKey)
-//        }
-//    }
-    
     private func deleteMemoryFromCoreData(_ memory: HeartBeatMemory, context: NSManagedObjectContext) {
         let request: NSFetchRequest<MemoryEntity> = MemoryEntity.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", memory.id as CVarArg)
@@ -128,14 +190,6 @@ class AppState: ObservableObject {
             NSLog("Error deleting memory from Core Data: \(error)")
         }
     }
-    
-//    private func deleteMemoryFromUserDefaults(_ memory: HeartBeatMemory) {
-//        var currentMemories = memories
-//        currentMemories.removeAll { $0.id == memory.id }
-//        if let data = try? JSONEncoder().encode(currentMemories) {
-//            UserDefaults.standard.set(data, forKey: memoriesKey)
-//        }
-//    }
     
     // MARK: - Codable Helpers
     
@@ -190,13 +244,10 @@ class AppState: ObservableObject {
             await MainActor.run {
                 memories.insert(memory, at: 0)
                 
-                // Save to Core Data or UserDefaults
+                // Save to Core Data
                 if let context = viewContext {
                     saveMemoryToCoreData(memory, context: context)
                 }
-//                else {
-//                    saveMemoryToUserDefaults(memory)
-//                }
                 
                 isProcessing = false
             }
@@ -214,9 +265,6 @@ class AppState: ObservableObject {
         if let context = viewContext {
             deleteMemoryFromCoreData(memory, context: context)
         }
-//        else {
-//            deleteMemoryFromUserDefaults(memory)
-//        }
     }
     
     // MARK: - Load Pending Photo Dates
@@ -249,7 +297,6 @@ class AppState: ObservableObject {
         let nextDate = pendingPhotoDates.removeFirst()
         await generateMemory(for: nextDate)
         
-        // 重置状态，允许继续加载下一个
         NSLog("generateNextPendingMemory completed, pending count: \(pendingPhotoDates.count)")
     }
 }

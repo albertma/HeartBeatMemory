@@ -23,7 +23,7 @@ struct SettingsView: View {
     @AppStorage("openAIKey") private var openAIKey: String = ""
     @AppStorage("autoGenerate") private var autoGenerate: Bool = true
     @AppStorage("generateTime") private var generateTime: Date = Date()
-    @AppStorage("llmTemperature") private var llmTemperature: Double = 0.3
+    @AppStorage("llmTemperature") private var llmTemperature: Double = 0.6
 
     // MLX Model settings
     @AppStorage("EnableLocalLLM") private var enableLocalLLM: Bool = false
