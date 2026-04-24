@@ -89,10 +89,14 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             context += "日程：\(eventTitles)\n"
         }
         
+        // 获取用户设置的 diary prompt
+        let userDiaryPrompt = UserDefaults.standard.string(forKey: "diaryPrompt") 
+            ?? "根据背景关键词，写一篇日记，第一人称，视觉优先，描写光影、氛围、动作，100字内，并给出标题。"
+        
         let prompt = """
         严格按照以下要求生成，只输出JSON，不输出任何其他内容。
 
-        任务：根据背景关键词写一篇治愈系日记，第一人称，视觉优先，描写光影、氛围、动作，100字内。
+        任务：\(userDiaryPrompt)
 
         背景关键词：\(context)
 

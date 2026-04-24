@@ -24,9 +24,10 @@ struct SettingsView: View {
     @AppStorage("autoGenerate") private var autoGenerate: Bool = true
     @AppStorage("generateTime") private var generateTime: Date = Date()
     @AppStorage("llmTemperature") private var llmTemperature: Double = 0.6
+    @AppStorage("diaryPrompt") private var diaryPrompt: String = "根据背景关键词，写一篇日记，第一人称，视觉优先，描写光影、氛围、动作，100字内，并给出标题。"
 
     // MLX Model settings
-    @AppStorage("EnableLocalLLM") private var enableLocalLLM: Bool = false
+    @AppStorage("EnableLocalLLM") private var enableLocalLLM: Bool = true
     @AppStorage("MLXModelName") private var selectedModelName: String = ""
 
     // 使用 @Bindable 让 UI 响应 MLXService 状态变化
@@ -63,8 +64,6 @@ struct SettingsView: View {
             type: .vlm
         )
     }
-
-    // 检测是否有内置模型
     
     // 预加载状态
     @State private var isPreloading: Bool = false
@@ -179,6 +178,22 @@ struct SettingsView: View {
                         }
                         Slider(value: $llmTemperature, in: 0...1, step: 0.1)
                         Text("值越大越有创意，值越小越保守 (0.0-1.0)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("日记 Prompt")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        TextEditor(text: $diaryPrompt)
+                            .frame(minHeight: 80)
+                            .font(.system(.caption))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            )
+                        Text("生成日记时的 prompt 模板，{context} 会替换为背景关键词")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
