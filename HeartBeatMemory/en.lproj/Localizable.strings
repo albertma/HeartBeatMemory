@@ -64,3 +64,26 @@
 /* API Key Input */
 "input_api_key" = "Input API Key";
 "get_from_openai" = "Get from OpenAI website";
+
+/* Timeline */
+"events" = "Events";
+"calendar_events" = "Calendar Events";
+"ai_tags" = "AI Tags";
+"app_store_link" = "HeartBeat Memory - App Store";
+"pull_to_load_more" = "Pull to load more memories...";
+"generating_memory" = "Generating memory...";
+"no_memories_yet" = "No memories yet";
+"tap_wand_to_generate" = "Tap the wand button to let AI generate today's memory";
+"ai_will_analyze" = "AI will analyze your calendar, photos, and location to generate warm memories";
+"confirm_delete_memory" = "Are you sure you want to delete this memory? This cannot be undone.";
+"memory_from_app" = "From HeartBeat Memory";
+"record_moments_with_ai" = "Record life's warm moments with AI";
+"photos_count" = "{count} photos";
+"events_count" = "{count} events";
+
+/* Delete */
+"delete" = "Delete";
+"delete_memory" = "Delete Memory";
+
+/* Timeline */
+"chat" = "Chat";

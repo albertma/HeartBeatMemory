@@ -1,11 +1,14 @@
 /* Timeline */
-"timeline " = "时间线";
+"timeline" = "时间线";
+
+/* Chat */
+"chat" = "聊天";
 
 /* Search */
-"search " = "搜索";
+"search" = "搜索";
 
 /* Settings */
-"settings " = "设置";
+"settings" = "设置";
 
 /* App Name */
 "heart_beat_memory" = "心跳回忆";
@@ -24,7 +27,7 @@
 "feature_ai_desc" = "用LLM生成温暖的回忆";
 
 /* Buttons */
-"next " = "下一步";
+"next" = "下一步";
 "skip" = "跳过";
 "request_permission" = "授权数据访问";
 "requesting" = "请求权限中...";
@@ -64,3 +67,72 @@
 /* API Key Input */
 "input_api_key" = "输入API Key";
 "get_from_openai" = "请从OpenAI官网获取API Key";
+
+/* Settings View */
+"local_ai_model" = "本地AI模型";
+"bundled_model_preinstalled" = "内置模型已预装";
+"bundled_model_not_configured" = "内置模型未配置";
+"add_llm_folder_to_xcode" = "请将 LLM 文件夹添加到 Xcode";
+"enable_local_model" = "启用本地模型";
+"select_model" = "选择模型";
+"preload_model" = "预加载模型";
+"manage_models" = "管理模型";
+"preloading" = "预加载中...";
+"already_preloaded" = "已预加载";
+"generation_settings" = "生成设置";
+"diary_prompt" = "日记 Prompt";
+"diary_prompt_hint" = "生成日记时的 prompt 模板，{context} 会替换为背景关键词";
+"data_permissions" = "数据权限";
+"manage_access" = "管理访问权限";
+"about" = "关于";
+"version" = "版本";
+"privacy_policy" = "隐私政策";
+"terms_of_use" = "使用条款";
+"clear_all_data" = "清除所有数据";
+
+/* Permissions */
+"calendar" = "日历";
+"read_calendar_events" = "读取日历事件";
+"reminders" = "提醒";
+"read_reminders" = "读取提醒事项";
+"photos" = "照片";
+"read_photos" = "读取照片";
+"location" = "位置";
+"access_location_history" = "访问位置历史";
+"notes" = "备忘录";
+"read_notes" = "读取备忘录";
+
+/* Timeline */
+"pull_to_load_more" = "下拉加载更多回忆...";
+"generating_memory" = "正在生成回忆...";
+"no_memories_yet" = "还没有回忆";
+"tap_wand_to_generate" = "点击右上角的魔杖按钮，让AI帮你生成今天的回忆";
+"ai_will_analyze" = "AI会分析你的日历、照片和位置，生成温暖的回忆";
+"confirm_delete_memory" = "确定要删除这条回忆吗？此操作无法撤销。";
+"memory_from_app" = "来自心跳回忆";
+"record_moments_with_ai" = "用 AI 记录生活中的温暖瞬间";
+"photos_count" = "{count}张";
+"events_count" = "{count}个";
+
+/* Chat */
+"chat" = "聊天";
+
+/* Delete */
+"delete" = "删除";
+"delete_memory" = "删除回忆";
+"cancel" = "取消";
+
+/* Timeline */
+"events" = "事件";
+"calendar_events" = "日历事件";
+"photos" = "照片";
+"ai_tags" = "AI标签";
+"app_store_link" = "心跳回忆 - App Store";
+
+/* Chat */
+"error" = "错误";
+"confirm" = "确定";
+"clear" = "清空";
+"built_in" = "内置";
+"vision" = "视觉";
+"text" = "文本";

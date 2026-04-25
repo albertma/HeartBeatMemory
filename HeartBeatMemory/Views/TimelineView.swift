@@ -33,14 +33,14 @@ struct TimelineView: View {
                                 Button(role: .destructive) {
                                     appState.deleteMemory(memory)
                                 } label: {
-                                    Label("删除", systemImage: "trash")
+                                    Label(LocalizedStringKey("delete"), systemImage: "trash")
                                 }
                             }
                             .contextMenu {
                                 Button(role: .destructive) {
                                     appState.deleteMemory(memory)
                                 } label: {
-                                    Label("删除", systemImage: "trash")
+                                    Label(LocalizedStringKey("delete"), systemImage: "trash")
                                 }
                             }
                     }
@@ -50,7 +50,7 @@ struct TimelineView: View {
                         VStack(spacing: 8) {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle())
-                            Text("下拉加载更多回忆...")
+                            Text(LocalizedStringKey("pull_to_load_more"))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -59,7 +59,7 @@ struct TimelineView: View {
                     } else if appState.isProcessing {
                         HStack {
                             ProgressView()
-                            Text("正在生成回忆...")
+                            Text(LocalizedStringKey("generating_memory"))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -265,18 +265,18 @@ struct EmptyStateView: View {
                 .foregroundColor(.gray.opacity(0.5))
             
             VStack(spacing: 8) {
-                Text("还没有回忆")
+                Text(LocalizedStringKey("no_memories_yet"))
                     .font(.title2)
                     .fontWeight(.medium)
                 
-                Text("点击右上角的魔杖按钮，让AI帮你生成今天的回忆")
+                Text(LocalizedStringKey("tap_wand_to_generate"))
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
             
-            Text("AI会分析你的日历、照片和位置，生成温暖的回忆")
+            Text(LocalizedStringKey("ai_will_analyze"))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.top, 8)
@@ -330,17 +330,17 @@ struct MemoryCard: View {
             // Show data sources if available
             HStack(spacing: 16) {
                 if !hbMemory.events.isEmpty {
-                    Label("\(hbMemory.events.count)个事件", systemImage: "calendar")
+                    Label("\(hbMemory.events.count) " + NSLocalizedString("events", comment: ""), systemImage: "calendar")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
                 if !hbMemory.photos.isEmpty {
-                    Label("\(hbMemory.photos.count)张照片", systemImage: "photo")
+                    Label("\(hbMemory.photos.count) " + NSLocalizedString("photos", comment: ""), systemImage: "photo")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
                 if !hbMemory.locations.isEmpty {
-                    Label("位置", systemImage: "location")
+                    Label(LocalizedStringKey("location"), systemImage: "location")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -473,13 +473,13 @@ struct MemoryDetailView: View {
                     .disabled(isCapturing)
                 }
             }
-            .alert("删除回忆", isPresented: $showDeleteAlert) {
-                Button("取消", role: .cancel) {}
-                Button("删除", role: .destructive) {
+            .alert(LocalizedStringKey("delete_memory"), isPresented: $showDeleteAlert) {
+                Button(LocalizedStringKey("cancel"), role: .cancel) {}
+                Button(LocalizedStringKey("delete"), role: .destructive) {
                     deleteMemory()
                 }
             } message: {
-                Text("确定要删除这条回忆吗？此操作无法撤销。")
+                Text(LocalizedStringKey("confirm_delete_memory"))
             }
             .sheet(isPresented: $showShareSheet) {
                 if let image = capturedImage {
@@ -525,16 +525,16 @@ struct MemoryDetailView: View {
         VStack(spacing: 8) {
             Divider()
             
-            Text("来自心跳回忆")
+            Text(LocalizedStringKey("memory_from_app"))
                 .font(.caption)
                 .foregroundColor(.secondary)
             
-            Text("用 AI 记录生活中的温暖瞬间")
+            Text(LocalizedStringKey("record_moments_with_ai"))
                 .font(.caption2)
                 .foregroundColor(.secondary)
             
             Link(destination: URL(string: "https://apps.apple.com/app/idXXXXXXXXX")!) {
-                Text("心跳回忆 - App Store")
+                Text(LocalizedStringKey("app_store_link"))
                     .font(.caption2)
             }
         }
@@ -604,11 +604,11 @@ struct MemoryDetailView: View {
     private var photosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("照片", systemImage: "photo.fill")
+                Label(LocalizedStringKey("photos"), systemImage: "photo.fill")
                     .font(.headline)
                     .foregroundColor(.green)
                 Spacer()
-                Text("\(memory.photos.count)张")
+                Text("\(memory.photos.count)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -628,11 +628,11 @@ struct MemoryDetailView: View {
     private var calendarSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("日历事件", systemImage: "calendar")
+                Label(LocalizedStringKey("calendar_events"), systemImage: "calendar")
                     .font(.headline)
                     .foregroundColor(.purple)
                 Spacer()
-                Text("\(memory.events.count)个")
+                Text("\(memory.events.count)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -659,7 +659,7 @@ struct MemoryDetailView: View {
     
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("AI标签", systemImage: "tag.fill")
+            Label(LocalizedStringKey("ai_tags"), systemImage: "tag.fill")
                 .font(.headline)
                 .foregroundColor(.orange)
 

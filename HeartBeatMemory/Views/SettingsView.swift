@@ -44,6 +44,9 @@ struct SettingsView: View {
     @State private var showingDownloadedModels: Bool = false
     @State private var modelToDelete: String?
 
+    // Privacy policy sheet
+    @State private var showingPrivacyPolicy: Bool = false
+
     // 检测是否有内置模型
     private var hasBundledModel: Bool {
         mlxService.hasBundledModel
@@ -73,13 +76,13 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 // MLX Model Section
-                Section("本地AI模型") {
+                Section(LocalizedStringKey("local_ai_model")) {
                     // 内置模型提示
                     if hasBundledModel {
                         HStack {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.green)
-                            Text("内置模型已预装")
+                            Text(LocalizedStringKey("bundled_model_preinstalled"))
                                 .font(.subheadline)
                             Spacer()
                             Text("Qwen2-VL-2B")
@@ -92,22 +95,22 @@ struct SettingsView: View {
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
-                                Text("内置模型未配置")
+                                Text(LocalizedStringKey("bundled_model_not_configured"))
                                     .font(.caption)
                                     .foregroundColor(.orange)
                             }
-                            Text("请将 LLM 文件夹添加到 Xcode ")
+                            Text(LocalizedStringKey("add_llm_folder_to_xcode"))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
                     }
 
-                    Toggle("启用本地模型", isOn: $enableLocalLLM)
+                    Toggle(LocalizedStringKey("enable_local_model"), isOn: $enableLocalLLM)
 
                     if enableLocalLLM {
                         // 模型选择
-                        Picker("选择模型", selection: $selectedModelName) {
+                        Picker(LocalizedStringKey("select_model"), selection: $selectedModelName) {
                             HStack {
                                 Text("Qwen2-VL-2B (内置)")
                                 if hasBundledModel {
@@ -142,17 +145,17 @@ struct SettingsView: View {
                             if preloadService.isPreloading {
                                 ProgressView()
                                     .scaleEffect(0.7)
-                                Text("预加载中...")
+                                Text(LocalizedStringKey("preloading"))
                                     .font(.caption)
                             } else if preloadService.isModelLoaded(selectedModelName) {
-                                Label("已预加载", systemImage: "bolt.fill")
+                                Label(LocalizedStringKey("already_preloaded"), systemImage: "bolt.fill")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             } else {
                                 Button {
                                     Task { await preloadSelectedModel() }
                                 } label: {
-                                    Label("预加载模型", systemImage: "bolt.fill")
+                                    Label(LocalizedStringKey("preload_model"), systemImage: "bolt.fill")
                                         .font(.caption)
                                 }
                                 .disabled(preloadService.isPreloading)
@@ -164,11 +167,11 @@ struct SettingsView: View {
                         NavigationLink {
                             ModelDownloadView()
                         } label: {
-                            Label("管理模型", systemImage: "square.stack.3d.down")
+                            Label(LocalizedStringKey("manage_models"), systemImage: "square.stack.3d.down")
                         }
                     }
                 }// LLM Temperature 设置
-                Section("生成设置") {
+                Section(LocalizedStringKey("generation_settings")) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Temperature")
@@ -183,7 +186,7 @@ struct SettingsView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("日记 Prompt")
+                        Text(LocalizedStringKey("diary_prompt"))
                             .font(.subheadline)
                             .fontWeight(.medium)
                         TextEditor(text: $diaryPrompt)
@@ -193,73 +196,54 @@ struct SettingsView: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                             )
-                        Text("生成日记时的 prompt 模板，{context} 会替换为背景关键词")
+                        Text(LocalizedStringKey("diary_prompt_hint"))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }// End of Temperature
 
-// OpenAI Section (shown when local model is disabled)
-//                Section("云端AI设置") {
-//                    HStack {
-//                        Label("API Key", systemImage: "key")
-//                        Spacer()
-//                        Button("设置") {
-//                            showingKeyInput = true
-//                        }
-//                    }
-//
-//                    Text("使用OpenAI GPT模型生成回忆")
-//                        .font(.caption)
-//                        .foregroundColor(.secondary)
-//                }
 
-//                Section("生成设置") {
-//                    Toggle("自动生成每日回忆", isOn: $autoGenerate)
-//
-//                    if autoGenerate {
-//                        DatePicker("生成时间", selection: $generateTime, displayedComponents: .hourAndMinute)
-//                    }
-//                }
 
-                Section("数据权限") {
-                    NavigationLink("管理访问权限") {
+                Section(LocalizedStringKey("data_permissions")) {
+                    NavigationLink(LocalizedStringKey("manage_access")) {
                         PermissionsView()
                     }
                 }
 
-                Section("关于") {
+                Section(LocalizedStringKey("about")) {
                     HStack {
-                        Text("版本")
+                        Text(LocalizedStringKey("version"))
                         Spacer()
                         Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
 
-                    Link("隐私政策", destination: URL(string: "https://example.com/privacy")!)
-                    Link("使用条款", destination: URL(string: "https://example.com/terms")!)
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        // 清除数据
+                    Button {
+                        showingPrivacyPolicy = true
                     } label: {
-                        Label("清除所有数据", systemImage: "trash")
+                        HStack {
+                            Text(LocalizedStringKey("privacy_policy"))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
+                    .foregroundColor(.primary)
+
+                    Link(LocalizedStringKey("terms_of_use"), destination: URL(string: "https://example.com/terms")!)
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle(LocalizedStringKey("settings"))
+            .sheet(isPresented: $showingPrivacyPolicy) {
+                PrivacyPolicyView()
+            }
             .sheet(isPresented: $showingKeyInput) {
                 APIKeyInputView(key: $openAIKey)
             }
-//            .sheet(isPresented: $showingModelInfo) {
-//                ModelInfoView(
-//                    modelName: selectedModelName,
-//                    modelType: selectedModelType
-//                )
-//            }
         }
     }
+    
 
     private var selectedModelType: LMModel.ModelType {
         MLXService.availableModels.first { $0.name == selectedModelName }?.type ?? .llm
@@ -505,7 +489,7 @@ struct InfoRow: View {
 
 // MARK: - Helper Functions
 
-private func formatBytes(_ bytes: Int64) -> String {
+func formatBytes(_ bytes: Int64) -> String {
     let formatter = ByteCountFormatter()
     formatter.countStyle = .file
     return formatter.string(fromByteCount: bytes)
@@ -552,13 +536,13 @@ struct APIKeyInputView: View {
 struct PermissionsView: View {
     var body: some View {
         List {
-            PermissionRow(icon: "calendar", title: "日历", description: "读取日历事件")
-            PermissionRow(icon: "bell", title: "提醒", description: "读取提醒事项")
-            PermissionRow(icon: "photo", title: "照片", description: "读取照片")
-            PermissionRow(icon: "location", title: "位置", description: "访问位置历史")
-            PermissionRow(icon: "note", title: "备忘录", description: "读取备忘录")
+            PermissionRow(icon: "calendar", title: "calendar", description: "read_calendar_events")
+            PermissionRow(icon: "bell", title: "reminders", description: "read_reminders")
+            PermissionRow(icon: "photo", title: "photos", description: "read_photos")
+            PermissionRow(icon: "location", title: "location", description: "access_location_history")
+            PermissionRow(icon: "note", title: "notes", description: "read_notes")
         }
-        .navigationTitle("数据权限")
+        .navigationTitle("data_permissions")
     }
 }
 

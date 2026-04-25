@@ -8,6 +8,7 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
     let description = "基于上下文生成温暖的回忆日记"
     
     private let mlxService = MLXService()
+    private let language = UserDefaults.standard.string(forKey: "language") ?? "zh"
     
     func execute(with context: SkillContext) async throws -> SkillResult {
         var photoKeywords: [String] = []
@@ -89,24 +90,38 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
             context += "日程：\(eventTitles)\n"
         }
         
-        // 获取用户设置的 diary prompt
+// 获取用户设置的 diary prompt 和语言设置
         let userDiaryPrompt = UserDefaults.standard.string(forKey: "diaryPrompt") 
-            ?? "根据背景关键词，写一篇日记，第一人称，视觉优先，描写光影、氛围、动作，100字内，并给出标题。"
+            ?? (language == "en" 
+                ? "Write a diary based on the context, first person, visual priority, describe light, atmosphere, actions, within 100 words, and give a title."
+                : "根据背景关键词，写一篇日记，第一人称，视觉优先，描写光影、氛围、动作，100字内，并给出标题。")
         
+        let (systemPrompt, outputFormat) = language == "en" ? (
+            system: "You only output standard JSON. No explanation, no small talk.",
+            format: """
+            {"title":"Title","summary":"Diary body","mood":"Choose from happy/calm/excited/healing/nostalgic/ordinary","category":"Choose from travel/food/daily/聚会/work/other","tags":["tag1","tag2"]}
+            """
+        ) : (
+            system: "你只输出标准JSON。不写文字，不解释，不闲聊",
+            format: """
+            {"title":"标题","summary":"日记正文","mood":"从开心/平静/激动/治愈/怀念/平常选一个","category":"从旅行/美食/日常/聚会/工作/其他选一个","tags":["标签1","标签2"]}
+            """
+        )
+
         let prompt = """
-        严格按照以下要求生成，只输出JSON，不输出任何其他内容。
+        Strictly follow the requirements below, output only JSON, nothing else.
 
-        任务：\(userDiaryPrompt)
+        Task: \(userDiaryPrompt)
 
-        背景关键词：\(context)
+        Context: \(context)
 
-        输出JSON格式：
-        {"title":"标题","summary":"日记正文","mood":"从开心/平静/激动/治愈/怀念/平常选一个","category":"从旅行/美食/日常/聚会/工作/其他选一个","tags":["标签1","标签2"]}
+        Output format:
+        \(outputFormat)
 
-        只输出JSON，禁止多余文字
+        Output JSON only, no extra text.
         """
-        
-        let systemMsg = Message(role: .system, content: "你只输出标准JSON。不写文字，不解释，不闲聊")
+
+        let systemMsg = Message(role: .system, content: systemPrompt)
         let userMsg = Message(role: .user, content: prompt)
         
         return Messages(system: systemMsg, user: userMsg)
@@ -157,35 +172,46 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
         return extractFields(from: json, originalResponse: cleaned)
     }
     
-    private func parseMarkdownFormat(_ response: String) throws -> ParsedDiary {
-        var title = "这一天"
+private func parseMarkdownFormat(_ response: String) throws -> ParsedDiary {
+        var title = language == "en" ? "This Day" : "这一天"
         var summary = response
-        var moodStr = "平常"
-        var categoryStr = "日常"
+        var moodStr = language == "en" ? "ordinary" : "平常"
+        var categoryStr = language == "en" ? "daily" : "日常"
         var tags: [String] = []
+        
+        // Support both Chinese and English prefixes
+        let titlePrefixes = language == "en" ? ["Title:", "标题:"] : ["标题:", "Title:"]
+        let summaryPrefixes = language == "en" ? ["Content:", "正文:"] : ["正文:", "Content:"]
+        let moodPrefixes = language == "en" ? ["Mood:", "心情:"] : ["心情:", "Mood:"]
+        let categoryPrefixes = language == "en" ? ["Category:", "分类:"] : ["分类:", "Category:"]
+        let tagPrefixes = language == "en" ? ["Tags:", "标签:"] : ["标签:", "Tags:"]
         
         let lines = response.components(separatedBy: .newlines)
         for line in lines {
+            guard let colonIndex = line.firstIndex(of: ":") else { continue }
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces)
+            let value = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
             
-            if trimmed.hasPrefix("标题:") {
-                title = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("正文:") {
-                summary = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("心情:") {
-                moodStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("分类:") {
-                categoryStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("标签:") {
-                let tagStr = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                tags = tagStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }
+            if key == "Title" || key == "标题" {
+                title = value
+            } else if key == "Content" || key == "正文" {
+                summary = value
+            } else if key == "Mood" || key == "心情" {
+                moodStr = value
+            } else if key == "Category" || key == "分类" {
+                categoryStr = value
+            } else if key == "Tags" || key == "标签" {
+                let separators = language == "en" ? CharacterSet(charactersIn: ",") : CharacterSet(charactersIn: "、")
+                tags = value.components(separatedBy: separators).map { $0.trimmingCharacters(in: .whitespaces) }
             }
         }
-        
-        guard title != "这一天" || !summary.isEmpty else {
-            throw SkillError.executionFailed("非Markdown格式")
+
+        let validTitle = language == "en" ? "This Day" : "这一天"
+        guard title != validTitle || !summary.isEmpty else {
+            throw SkillError.executionFailed("Non-markdown format")
         }
-        
+
         let json: [String: Any] = [
             "title": title,
             "summary": summary,
@@ -197,10 +223,10 @@ final class GenerateDiarySkill: Skill, @unchecked Sendable {
     }
     
     private func extractFields(from json: [String: Any], originalResponse: String) -> ParsedDiary {
-        let title = json["title"] as? String ?? "这一天"
+        let title = json["title"] as? String ?? (language == "en" ? "This Day" : "这一天")
         let summary = json["summary"] as? String ?? originalResponse
-        let moodStr = json["mood"] as? String ?? "平常"
-        let categoryStr = json["category"] as? String ?? "日常"
+        let moodStr = json["mood"] as? String ?? (language == "en" ? "ordinary" : "平常")
+        let categoryStr = json["category"] as? String ?? (language == "en" ? "daily" : "日常")
         let tags = json["tags"] as? [String] ?? []
         
         let moods = moodStr.components(separatedBy: "、").map { $0.trimmingCharacters(in: .whitespaces) }

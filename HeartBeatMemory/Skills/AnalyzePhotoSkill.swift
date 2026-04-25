@@ -87,18 +87,26 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
         let fileManager = FileManager.default
         defer { try? fileManager.removeItem(at: tempURL) }
         
-        let prompt = """
-        观察图片，提取3-5个关键词。
-        必须包含：场景、物体、动作、氛围。
-        仅输出关键词，用逗号分隔，无其他文字。
-        """
-        
-        let systemMessage = Message(
-            role: .system,
-            content: "你只输出图片关键词，不解释，不造句，不输出多余内容。"
+        let language = UserDefaults.standard.string(forKey: "language") ?? "zh"
+        let prompts = language == "en" ? (
+            user: """
+            Analyze this image and extract 3-5 keywords.
+            Must include: scene, objects, action, atmosphere.
+            Only output keywords, separated by commas, nothing else.
+            """,
+            system: "You only output image keywords. No explanation, no sentences, no extra text."
+        ) : (
+            user: """
+            观察图片，提取3-5个关键词。
+            必须包含：场景、物体、动作、氛围。
+            仅输出关键词，用逗号分隔，无其他文字。
+            """,
+            system: "你只输出图片关键词，不解释，不造句，不输出多余内容。"
         )
-        let userMessage = Message(role: .user, content: prompt, images: [tempURL])
         
+        let systemMessage = Message(role: .system, content: prompts.system)
+        let userMessage = Message(role: .user, content: prompts.user, images: [tempURL])
+
         var fullResponse = ""
         do {
             let stream = try await mlxService.generate(messages: [systemMessage, userMessage], model: model)

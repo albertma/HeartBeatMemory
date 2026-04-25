@@ -157,6 +157,20 @@ class AppState: ObservableObject {
     }
     
     private func saveMemoryToCoreData(_ memory: HeartBeatMemory, context: NSManagedObjectContext) {
+        // 检查是否已存在相同 date 的记录，如果存在则覆盖
+        let fetchRequest: NSFetchRequest<MemoryEntity> = MemoryEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "date == %@", memory.date as CVarArg)
+        
+        do {
+            let existingEntities = try context.fetch(fetchRequest)
+            for entity in existingEntities {
+                context.delete(entity)
+            }
+        } catch {
+            NSLog("Error checking existing memories: \(error)")
+        }
+        
+        // 创建新记录
         let entity = MemoryEntity(context: context)
         entity.id = memory.id
         entity.date = memory.date
