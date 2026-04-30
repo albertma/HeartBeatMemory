@@ -34,7 +34,7 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
                         latitude: photoLoc.latitude,
                         longitude: photoLoc.longitude
                     )
-                    NSLog("Location: \(locationName)")
+                    print("Location: \(locationName)")
                     let namedLocation = LocationData(
                         name: locationName,
                         latitude: photoLoc.latitude,
@@ -183,18 +183,22 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     }
     
     private func reverseGeocode(latitude: Double, longitude: Double) async -> String {
-        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        // 中国的经纬度需要从 WGS-84 → GCJ-02 转换后再进行逆地理编码
+        let wgsCoord = Coordinate(lat: latitude, lng: longitude, type: .wgs84)
+        let gcjCoord = CoordTransform.wgs84ToGcj02(wgsCoord)
+        let coordinate = CLLocationCoordinate2D(latitude: gcjCoord.lat, longitude: gcjCoord.lng)
         
-        for radius in [2000.0, 5000.0, 10000.0] {
-            if let result = await searchWithMapKit(coordinate: coordinate, radius: radius) {
-                return result
-            }
-        }
+//        for radius in [50.0, 300.0, 800.0] {
+//            if let result = await searchWithMapKit(coordinate: coordinate, radius: radius) {
+//                return result
+//            }
+//        }
         
-        return await reverseGeocodeFallback(latitude: latitude, longitude: longitude)
+        return await reverseGeocodeFallback(latitude: gcjCoord.lat, longitude: gcjCoord.lng)
     }
     
     private func searchWithMapKit(coordinate: CLLocationCoordinate2D, radius: Double) async -> String? {
+        print("Search with mapkit")
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = "地点"
         request.region = MKCoordinateRegion(
@@ -239,6 +243,7 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
     }
     
     private func reverseGeocodeFallback(latitude: Double, longitude: Double) async -> String {
+        print("Run RGC fallback")
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let geocoder = CLGeocoder()
         
@@ -247,7 +252,11 @@ final class AnalyzePhotoSkill: Skill, @unchecked Sendable {
             
             if let placemark = placemarks.first {
                 var components: [String] = []
-                
+                if let aOI = placemark.areasOfInterest{
+                    if !aOI.isEmpty{
+                        components.append(aOI[0])
+                    }
+                }
                 if let administrativeArea = placemark.administrativeArea {
                     components.append(administrativeArea)
                 }
