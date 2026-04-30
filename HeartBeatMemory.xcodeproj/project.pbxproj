@@ -150,7 +150,6 @@
 				530879372F5EA309004E4E27 /* Sources */,
 				530879382F5EA309004E4E27 /* Frameworks */,
 				530879392F5EA309004E4E27 /* Resources */,
-				53A8D6432F8FD029006D9CBC /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -289,27 +288,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		53A8D6432F8FD029006D9CBC /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 8;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n\npython \"${SRCROOT}/scripts/download_llm_model.py\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		530879372F5EA309004E4E27 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -381,7 +359,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.albertma.AIPhotoDiary;
+				PRODUCT_BUNDLE_IDENTIFIER = com.albertma.HeartBeatMemory;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -426,7 +404,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.albertma.AIPhotoDiary;
+				PRODUCT_BUNDLE_IDENTIFIER = com.albertma.HeartBeatMemory;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

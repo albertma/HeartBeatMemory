@@ -231,7 +231,7 @@ struct SettingsView: View {
                     }
                     .foregroundColor(.primary)
 
-                    Link(LocalizedStringKey("terms_of_use"), destination: URL(string: "https://example.com/terms")!)
+                    //Link(LocalizedStringKey("terms_of_use"), destination: URL(string: "https://example.com/terms")!)
                 }
             }
             .navigationTitle(LocalizedStringKey("settings"))

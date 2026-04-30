@@ -104,7 +104,21 @@ HeartBeatMemory/
 
 - iOS 17.0+ / macOS 14.0+
 - 需要照片库和日历访问权限
-- 需要下载 MLX 模型（应用内自动下载）
+- 需要下载 MLX 模型（约 1-2GB，请手动下载，见下方说明）
+
+## 模型下载
+
+本应用使用 Qwen2-VL-2B-Instruct-4bit 模型进行本地 VLM 推理。模型需**手动下载**：
+
+```bash
+# 在项目根目录执行
+python3 scripts/download_llm_model.py
+```
+
+模型文件将下载到 `HeartBeatMemory/LLM/Qwen2-VL-2B-Instruct-4bit/` 目录。
+建议在良好的网络环境下执行，下载约 1-2GB。
+
+> 注意：使用 `python3` 而非 `python`，macOS 已移除 Python 2。
 
 ## 依赖
 
